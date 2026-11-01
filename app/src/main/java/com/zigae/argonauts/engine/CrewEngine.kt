@@ -87,6 +87,18 @@ class CrewEngine(private val context: Context) {
     val toasts: SharedFlow<String> = _toasts.asSharedFlow()
 
     private val dismissed = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * 시연용 '주행 화면 미리보기'. 에뮬레이터는 adb 설치 앱을 허용된 설치 출처로 보지 않아
+     * 주행 중엔 시스템 차단 화면이 뜨므로(App Market 설치 시엔 DO 선언 적용), 정차 상태에서 간결 모드와 차량 이동을 보여준다.
+     */
+    private val _drivingPreview = MutableStateFlow(false)
+    val drivingPreview: StateFlow<Boolean> = _drivingPreview.asStateFlow()
+
+    fun setDrivingPreview(on: Boolean) { _drivingPreview.value = on; _ui.value?.let { sync?.let(::rebuildUi) } }
+
+    /** 실제 기어가 D/R/N 이거나 주행 화면 미리보기 중. */
+    fun isDriving(): Boolean = _drivingPreview.value || gear.gear.value.let { it != Gear.PARK && it != Gear.UNKNOWN }
     private var loopJob: Job? = null
     private var uiJob: Job? = null
     private var eventJob: Job? = null
@@ -96,6 +108,18 @@ class CrewEngine(private val context: Context) {
     private var arrivedFor: Place? = null
     /** 리더 내비 목적지 변경 감지용 이전 값. */
     private var lastNaviDest: Place? = null
+    /** 앱이 경로를 요청한 직후: 내비가 새 목적지를 보고할 때까지 '내비에서 직접 변경' 감지를 멈춘다. */
+    private var expectedNaviDest: Place? = null
+    /** 참여·재접속 직후엔 내비 목적지를 아직 모르므로 첫 관측값을 기준으로만 삼는다. */
+    private var naviBaseline = false
+    private var expectedUntil = 0L
+
+    private fun routeTo(place: Place): Boolean {
+        expectedNaviDest = place
+        expectedUntil = System.currentTimeMillis() + 20_000
+        lastNaviDest = place
+        return navi.requestRoute(place)
+    }
 
     fun start() {
         navi.start()
@@ -133,6 +157,7 @@ class CrewEngine(private val context: Context) {
         setColor(0)
         s.publishMeta(CrewMeta(code, crewName.ifBlank { "${me.name}의 크루" }, me.id, dest, System.currentTimeMillis()))
         lastNaviDest = dest
+        naviBaseline = true
         enter(code)
     }
 
@@ -149,6 +174,7 @@ class CrewEngine(private val context: Context) {
         val used = s.members.value.values.map { it.colorIndex }.toSet()
         setColor((0 until PALETTE_SIZE).firstOrNull { it !in used } ?: (s.members.value.size % PALETTE_SIZE))
         lastNaviDest = navi.state.value.destination?.place
+        naviBaseline = lastNaviDest != null
         enter(c)
         return true
     }
@@ -156,6 +182,7 @@ class CrewEngine(private val context: Context) {
     private fun rejoin(code: String) {
         openSync(code)
         lastNaviDest = navi.state.value.destination?.place
+        naviBaseline = lastNaviDest != null
         enter(code)
     }
 
@@ -224,7 +251,7 @@ class CrewEngine(private val context: Context) {
         }
 
         uiJob = scope.launch {
-            combine(s.members, s.meta, s.request, s.connected, dismissed) { _, _, _, _, _ -> Unit }
+            combine(s.members, s.meta, s.request, s.connected, combine(dismissed, _drivingPreview, gear.gear) { _, _, _ -> Unit }) { _, _, _, _, _ -> Unit }
                 .collect { rebuildUi(s) }
         }
 
@@ -255,7 +282,7 @@ class CrewEngine(private val context: Context) {
         val remainM = sim?.remainM ?: n.destination?.remainM
         val remainS = sim?.remainS ?: n.destination?.remainS
         if (dest != null && arrivedAt == null && ((sim?.arrived == true) || (sim == null && remainM != null && remainM in 1..50))) markArrived()
-        val driving = gear.gear.value.let { it != Gear.PARK && it != Gear.UNKNOWN }
+        val driving = isDriving()
         return Member(
             id = p.id, name = p.name.ifBlank { "나" }, colorIndex = p.colorIndex, kind = MemberKind.CAR,
             at = sim?.at ?: n.location, heading = sim?.heading ?: n.heading,
@@ -289,11 +316,19 @@ class CrewEngine(private val context: Context) {
         val me = _profile.value
         if (meta.leaderId != me.id) return
         val naviDest = navi.state.value.destination?.place
-        if (naviDest != null && !naviDest.sameAs(lastNaviDest) && !naviDest.sameAs(meta.destination)) {
+        if (!naviBaseline) {
+            if (naviDest != null) { lastNaviDest = naviDest; naviBaseline = true }
+            return
+        }
+        expectedNaviDest?.let { exp ->
+            if (naviDest.sameOrNull(exp) || System.currentTimeMillis() > expectedUntil) expectedNaviDest = null
+            else return@let
+        }
+        if (expectedNaviDest == null && naviDest != null && !naviDest.sameAs(lastNaviDest) && !naviDest.sameAs(meta.destination)) {
             Log.i(TAG, "leader destination changed in navi -> ${naviDest.name}")
             s.publishMeta(meta.copy(destination = naviDest, updatedAt = System.currentTimeMillis()))
         }
-        lastNaviDest = naviDest ?: lastNaviDest
+        if (expectedNaviDest == null) lastNaviDest = naviDest ?: lastNaviDest
         val req = s.request.value
         if (req != null && req.status == RequestStatus.PENDING && System.currentTimeMillis() > req.expiresAt) {
             s.publishRequest(req.copy(status = RequestStatus.EXPIRED, decidedAt = System.currentTimeMillis()))
@@ -310,7 +345,7 @@ class CrewEngine(private val context: Context) {
             .filter { it.id != p.id }
             .map { if (!it.simulated && now - it.updatedAt > OFFLINE_MS && it.status != MemberStatus.ARRIVED) it.copy(status = MemberStatus.OFFLINE) else it }
             .sortedWith(compareBy<Member> { it.status == MemberStatus.OFFLINE }.thenBy { it.remainM ?: Int.MAX_VALUE }.thenBy { it.name })
-        val driving = gear.gear.value.let { it != Gear.PARK && it != Gear.UNKNOWN }
+        val driving = isDriving()
         val isLeader = meta?.leaderId == p.id
         val req = s.request.value
         val crewDest = meta?.destination
@@ -353,7 +388,7 @@ class CrewEngine(private val context: Context) {
     fun emitToast(msg: String) { _toasts.tryEmit(msg) }
 
     fun followDestination(p: Prompt.FollowDestination) {
-        if (navi.requestRoute(p.place)) _toasts.tryEmit("${p.place.name}(으)로 안내를 시작해요")
+        if (routeTo(p.place)) _toasts.tryEmit("${p.place.name}(으)로 안내를 시작해요")
         dismiss(p)
     }
 
@@ -369,8 +404,7 @@ class CrewEngine(private val context: Context) {
         val now = System.currentTimeMillis()
         s.publishRequest(p.request.copy(status = RequestStatus.ACCEPTED, decidedAt = now))
         s.publishMeta(meta.copy(destination = p.request.place, updatedAt = now))
-        lastNaviDest = p.request.place
-        navi.requestRoute(p.request.place)
+        routeTo(p.request.place)
         _toasts.tryEmit("크루 목적지를 ${p.request.place.name}(으)로 바꿨어요")
     }
 
@@ -390,8 +424,7 @@ class CrewEngine(private val context: Context) {
         val now = System.currentTimeMillis()
         if (meta.leaderId == me.id) {
             s.publishMeta(meta.copy(destination = place, updatedAt = now))
-            lastNaviDest = place
-            navi.requestRoute(place)
+            routeTo(place)
             return "크루 목적지를 ${place.name}(으)로 정했어요"
         }
         val cur = s.request.value
@@ -403,7 +436,7 @@ class CrewEngine(private val context: Context) {
     /** 만나기: 크루원의 현재 위치로 안내 (정차 중). */
     fun goToMember(m: Member) {
         val at = m.at ?: return
-        navi.requestRoute(Place("${m.name}의 위치", at))
+        routeTo(Place("${m.name}의 위치", at))
         _toasts.tryEmit("${m.name}에게 가는 길을 안내해요")
     }
 
@@ -431,7 +464,7 @@ class CrewEngine(private val context: Context) {
             crewDestination = { s.meta.value?.destination },
             myStart = { navi.state.value.location },
             myRoute = { navi.state.value.destination?.place to navi.state.value.waypoints.map { it.place } },
-            moving = { gear.gear.value.let { it != Gear.PARK && it != Gear.UNKNOWN } },
+            moving = { isDriving() },
             publish = { m -> if (leaderOnly()) s.publishMember(m) },
         )
     }

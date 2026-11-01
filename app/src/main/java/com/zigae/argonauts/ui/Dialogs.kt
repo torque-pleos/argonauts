@@ -270,6 +270,7 @@ fun SettingsDialog(engine: CrewEngine, inCrew: Boolean, onClose: () -> Unit) {
                         GhostButton("① 지영이 휴게소를 경유지로 추가", { engine.demoJiyoungRestStop(); onClose() }, Modifier.fillMaxWidth())
                         GhostButton("② 민수가 목적지 변경 요청", { engine.demoMinsuRequest(); onClose() }, Modifier.fillMaxWidth())
                         GhostButton("③ 전원 도착 (시간 단축)", { engine.demoArriveAll(); onClose() }, Modifier.fillMaxWidth())
+                        GhostButton("주행 화면 미리보기 켜기 (지도 위 '미리보기 끝'으로 종료)", { engine.setDrivingPreview(true); onClose() }, Modifier.fillMaxWidth())
                     }
                 }
             }

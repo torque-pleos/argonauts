@@ -208,8 +208,8 @@ class DemoSim(private val scope: CoroutineScope) {
         val onRoute = line.points.filterIndexed { i, _ -> i % 5 == 0 }
         val found = PlaceSearch.search("휴게소", mid, osmTag = "highway:services", limit = 20)
             .map { p -> p to onRoute.minOf { Geo.distanceM(it, p.at) } }
-            .filter { it.second < 2_500 }
-            .minByOrNull { Geo.distanceM(it.first.at, mid) }?.first
+            .filter { it.second < 8_000 }
+            .minByOrNull { it.second + Geo.distanceM(it.first.at, mid) * 0.2 }?.first
         val stop = found ?: Place("졸음쉼터", mid)
         f.waypoint = stop
         f.car.setRoute(Routing.route(listOf(f.car.position, stop.at, dest.at)), stop.at)

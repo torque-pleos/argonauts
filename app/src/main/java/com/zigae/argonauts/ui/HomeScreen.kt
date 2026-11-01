@@ -54,7 +54,8 @@ fun AppRoot(engine: CrewEngine) {
     val code by engine.code.collectAsState()
     val ui by engine.ui.collectAsState()
     val gear by engine.gear.gear.collectAsState()
-    val driving = gear != Gear.PARK && gear != Gear.UNKNOWN
+    val preview by engine.drivingPreview.collectAsState()
+    val driving = preview || (gear != Gear.PARK && gear != Gear.UNKNOWN)
     Box(Modifier.fillMaxSize().background(Argo.c.bg)) {
         when {
             profile.name.isBlank() -> NameScreen(engine, driving)

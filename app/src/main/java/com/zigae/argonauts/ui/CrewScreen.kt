@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +84,10 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                 modifier = Modifier.fillMaxSize(),
             )
             MapHeader(ui, Modifier.align(Alignment.TopStart).padding(16.dp))
+            val preview by engine.drivingPreview.collectAsState()
+            if (preview) {
+                MapIconButton(Icons.Filled.Close, "미리보기 끝", Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 16.dp)) { engine.setDrivingPreview(false) }
+            }
             if (!ui.driving) {
                 Row(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MapIconButton(Icons.Filled.Refresh, "전체 보기") { focusId = null; fit++ }
@@ -146,10 +151,10 @@ private fun MapHeader(ui: CrewUi, modifier: Modifier) {
 private val IntrinsicWidthCap = 360.dp
 
 @Composable
-private fun MapIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+private fun MapIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Argo.c
     Row(
-        Modifier.clip(RoundedCornerShape(16.dp)).background(c.surface.copy(alpha = 0.95f)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 14.dp),
+        modifier.clip(RoundedCornerShape(16.dp)).background(c.surface.copy(alpha = 0.95f)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(icon, null, tint = c.text, modifier = Modifier.size(26.dp))

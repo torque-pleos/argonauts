@@ -9,7 +9,7 @@
 | 원조 모델 | 친구 위치 공유 앱(젠리 류), 카카오맵 위치 공유, 무전기로 하던 차량 행렬 이동 |
 | 사용 맥락 | 출발 전 크루 구성(정차) + 주행 중 상태 확인(숫자 위주, 최소 조작) + 휴게소·도착(정차) |
 | 카테고리 | **Mobility Services** — 가이드의 "현재 위치 기반 즉각 정보, 경유지 설정"에 해당. (Social/Communication은 주행 중 허용 카테고리 예시에 없어 선택하지 않음) |
-| 상태 | 기획 + 구현 가능성 검증 완료 (2026-11-02, 7-1장). 공모전 제출용 |
+| 상태 | **MVP 구현·에뮬레이터 검증 완료 (2026-11-02)** — 차량 앱 + 친구용 휴대폰 웹(https://argonauts-crew.vercel.app). 9장 참고. 공모전 제출용 |
 
 ---
 
@@ -100,10 +100,10 @@
 | NaviHelper — 이벤트 | `onDestinationChanged`, `onDestinationArrived`, `onWaypointChanged`, `onWayPointArrived` | `pleos.car.permission.NAVI_ROUTE` |
 | NaviHelper — 목적지 후보 | `getBookmarkInfo`, `getRecentDestinationInfo` (목적지 변경 요청용) | `pleos.car.permission.NAVI_ROUTE` |
 | NaviHelper — 경로 설정 | `requestRoute`, `addWaypoint` (사용자 탭 시에만) | `pleos.car.permission.NAVI_ROUTE_SEARCH` |
-| 지도 렌더링 | 외부 지도 SDK (네이버/카카오 지도 Android SDK 또는 MapLibre + 타일). Pleos Map API는 Playground 사용 가능 목록에 없음 | — |
+| 지도 렌더링 | osmdroid + OpenStreetMap 타일 (주간 채도 낮춤 / 야간 반전 필터). Pleos Map API는 Playground 사용 가능 목록에 없음 | — |
 | Vehicle State | 기어·주행 상태로 정차 판정(지도 화면 전환) | `pleos.car.permission.CAR_DRIVE` |
-| Android 표준 | `CarUxRestrictions`로 주행 중 UI 제한 | — |
-| 외부 | 크루 상태 중계 서버(WebSocket/폴링), 친구용 휴대폰 웹(지도·장소 검색·차로 보내기) | — |
+| Android 표준 | `distractionOptimized` 선언 + 기어 기반 주행/정차 UI 분리, 포그라운드 서비스(`specialUse`) | — |
+| 외부 | **크루 동기화: MQTT retained 메시지**(EMQX 공개 브로커, 차량 TLS 8883 / 웹 WSS 8084) · 장소 검색 Photon · 시연 경로 OSRM · 친구용 웹 Vercel 정적 배포 | — |
 
 ## 5. 평가 항목 대응
 
@@ -148,25 +148,84 @@
 | 남은 거리·시간(도착 예정) | ✅ | `DestinationInfo.remainDistance/remainTime`(예: 99000m/5760초), 경유지별 `WaypointInfo.remainDistance/remainTime`, `onDrivingInfo`에도 목적지·경유지별 값 |
 | `requestTrip()` | ✅ | **경로를 바꾸지 않고** 임의 지점까지 거리·소요 시간·교통 상황 조회(예: 26135m/1628초) → 만나기 모드의 "친구까지 몇 분" 계산에 사용 |
 | 즐겨찾기·최근 목적지 | ✅ | `BOOKMARKS`: 집/회사(이름은 빈 값, 카테고리로 구분), `RECENT`: 목적지 목록 → 목적지 변경 요청 후보 |
-| 주행 중 화면 | ✅ | `distractionOptimized` 선언 시 D·60km/h에서도 화면 유지 (Hephaestus는 미선언 → 차단 화면) |
+| 주행 중 화면 | ⚠️ 정정 | 첫 검증 때는 D·60km/h에서 표시됐으나, 재설치 후 `CarPackageManagerService: not installed from permitted sources`로 **차단 화면**. 에뮬레이터는 adb·임의 설치 출처를 허용 출처로 보지 않음 → App Market 설치에서만 확인 가능(공모전 범위에선 넘어감). 시연은 앱의 '주행 화면 미리보기'로 간결 모드를 보여준다 |
 | `onDestinationChanged` | ⚠️ | `requestRoute()`로 바꿀 때는 오지 않음 → `onRouteStarted` + 목적지 조회로 변경 감지 |
 | 위치 이동 | ❌ (에뮬레이터 한계) | 현재 위치가 판교(37.41272, 127.09468)에 고정. Virtual Console 속도·`emu geo fix`·내비 설정 모두 이동 수단 없음 → **데모는 앱 데모 모드로 위치 이동을 시뮬레이션**, 실차에서 갱신 주기 확인 필요 |
 
 ### 판정
 - 핵심 기능(실시간 공유, 목적지 따라가기, 경유지 같이 들르기, 목적지 변경 요청, 만나기)은 **현재 SDK로 구현 가능**.
-- 주행 중 실시간 지도는 DO 선언으로 표시 가능. 심사 대응은 간결 모드 설계로.
+- 주행 중 실시간 지도는 DO 선언 + 간결 모드로 설계. 에뮬레이터(adb 설치)에서는 시스템이 차단하므로 '주행 화면 미리보기'로 시연.
 - 크루원 이동은 데모에서 서버/앱의 시뮬레이션 데이터로 보여준다.
 
 ## 8. MVP 범위 (공모전 제출)
 
 - [x] 사전 검증: 백그라운드 NaviHelper 콜백, `requestRoute`/`addWaypoint` 동작, ETA 필드 (7-1)
-- [ ] F1 크루 생성·참여 (코드/QR, 폰 웹 참여)
-- [ ] F2 실시간 크루 지도 (주행 중 간결 모드 / 정차 중 전체 모드)
-- [ ] F3 목적지 공유 · 변경 요청 (요청 → 리더 승인 → 크루원 따라가기)
-- [ ] F4 경유지 같이 들르기
-- [ ] F6 자동 체크인·해산
-- [ ] 친구용 휴대폰 웹 (지도 + 차로 보내기)
-- [ ] Virtual Console 데모 시나리오 (기어·주행 + 내비 경로)
+- [x] F1 크루 생성·참여 (6자리 코드 / 초대 QR → 휴대폰 웹 참여)
+- [x] F2 실시간 크루 지도 (주행 중 간결 모드 / 정차 중 전체 모드)
+- [x] F3 목적지 공유 · 변경 요청 (요청 → 리더 승인 → 크루원 따라가기), 리더가 내비에서 직접 바꾼 목적지도 반영
+- [x] F4 경유지 같이 들르기
+- [x] F5 만나기 (크루원 상세: `requestTrip`으로 "내 차에서 n분", 그 친구에게 가기)
+- [x] F6 자동 체크인·해산, F7 원정 완료 카드(도착 순서)
+- [x] 친구용 휴대폰 웹 (지도 + 크루 목록 + 장소 검색 → 목적지 변경 요청)
+- [x] 시연 모드 (가상 크루원 2명, 스크립트 3종, 주행 화면 미리보기)
+
+## 9. 구현 및 동작 검증 (2026-11-02, 에뮬레이터 `Pleos_Connect_Argonauts`)
+
+### 구조
+
+```
+차량 앱 (Kotlin · Compose)                     친구용 휴대폰 웹 (web/index.html, Vercel)
+ ├ NaviMonitor   NaviHelper 3초 조회·이벤트      ├ 위치: Geolocation
+ ├ GearMonitor   Vehicle 기어 → 주행/정차         ├ 지도: Leaflet + OSM
+ ├ CrewEngine    상태 기계 · 한 번 탭 카드        └ 요청: Photon 검색 → req 발행
+ ├ CrewSync      MQTT (retained)  ◀── argonauts/v1/{코드}/meta · m/{id} · req ──▶  MQTT over WSS
+ ├ DemoSim       가상 크루원·내 차 이동 (OSRM 경로)
+ └ CrewService   포그라운드 서비스 (내비가 앞에 있어도 공유 유지)
+```
+
+- 서버를 따로 두지 않는다: 크루 상태는 MQTT **retained** 메시지(토픽별 마지막 값)로 보관 → 새로 참여한 기기도 즉시 전체 상태를 받는다. 크루 종료 시 빈 retained로 지운다.
+- 리더가 크루 목적지의 기준. 앱이 경로를 요청한 직후엔 내비가 새 목적지를 보고할 때까지 "내비에서 직접 변경" 감지를 멈춘다(되돌림 방지).
+- 사용자 탭 없이 경로를 바꾸지 않는다(단일 경로 정책). 경로 요청 시 내비 화면이 앞으로 나오는 것은 시스템 동작.
+
+### 확인한 것
+
+| 항목 | 결과 |
+| --- | --- |
+| 크루 만들기 → 내비 목적지가 크루 목적지 | ✅ 남이섬 78km · 도착 예정 시각·남은 시간 표시 |
+| 크루원 실시간 지도·목록 (앞/뒤 간격, 도착 예정) | ✅ 가상 크루원 2명 + 휴대폰 웹 참여자 동시 표시 |
+| 경유지 같이 들르기 카드 | ✅ 가상 크루원이 경유지 추가 → "○○님이 ○○에 들러요 [같이 들르기]" |
+| 목적지 변경 요청 → 리더 승인 | ✅ 차량 내 가상 크루원 요청·**휴대폰 웹 요청** 모두 리더 카드 → 수락 → 리더 내비 경로 변경 → 웹 목적지도 갱신 |
+| 주행 간결 모드 | ✅ (미리보기) 하단 버튼·입력 숨김, 크루 전체 범위 고정, 터치 조작 차단, 크루원 이동 |
+| 전원 도착 → 원정 완료 카드 | ✅ 도착 순서·시각, 크루 해산 |
+| 주간/야간 테마 | ✅ 차량(`uimode night`)·웹(`prefers-color-scheme`) |
+| 단위 테스트 | ✅ 9건 (모델 JSON 왕복, 거리·시간·간격 표기) — `./gradlew :app:testDebugUnitTest` |
+
+### 검증하지 못한 항목 (공모전 범위에서 넘어감)
+- **실차 주행 중 화면**: 에뮬레이터는 adb 설치 앱을 허용 출처로 보지 않아 차단(7-1 정정). App Market 설치 시 DO 적용 예상.
+- **실제 위치 이동·갱신 주기**: 에뮬레이터 위치 고정 → 시연 모드로 대체.
+- **두 대 이상의 실제 차량**: 차량 1대(에뮬레이터) + 가상 크루원 + 휴대폰 웹으로 대체.
+- **공개 MQTT 브로커의 보안·가용성**: 시연용. 상용 시 자체 브로커 + 크루별 인증 토큰 필요.
+
+### 데모 순서 (약 5분)
+1. 정차(P). 내비 목적지 남이섬 → 앱 첫 화면 "크루 만들기" (크루 목적지 = 남이섬).
+2. 공유 아이콘 → 초대 QR. 휴대폰으로 찍어 웹 참여(친구 1명) → 차량 지도·목록에 "휴대폰" 크루원 등장.
+3. 설정 → 시연 스크립트 ① 지영 휴게소 경유지 → "같이 들르기" 카드 탭 → 내 내비에 경유지 추가.
+4. 휴대폰 웹에서 장소 검색 → "리더에게 요청 보내기" → 차량에 승인 카드 → 수락 → 크루 목적지 변경(가상 크루원도 새 목적지로).
+   (휴대폰이 없으면 스크립트 ② 민수 목적지 변경 요청)
+5. 설정 → "주행 화면 미리보기" (또는 실차/App Market 설치 시 Virtual Console 기어 D) → 간결 모드에서 크루가 함께 이동.
+6. 크루원 마커/목록 탭(정차 중) → "내 차에서 n분" · "○○에게 가기".
+7. 스크립트 ③ 전원 도착 → 원정 완료 카드 → 크루 해산.
+
+## 10. 외부 서비스 · 계정 정리 (나중에 한 번에 처리)
+
+| 항목 | 현재 | 처리할 것 |
+| --- | --- | --- |
+| 크루 동기화 서버 | EMQX **공개** MQTT 브로커 (계정 없음, 보안·SLA 없음) | 상용/본선 시 자체 브로커 또는 관리형(EMQX Cloud 등) + 인증. 원래 후보였던 Supabase는 개인 조직(zigae) 무료 활성 프로젝트 2개(hermes, onlyrally)로 한도 → 하나를 일시정지하거나 유료 전환 필요 |
+| Cloudflare | `wrangler` 로그인 만료 (비대화형이라 재로그인 불가) | 필요하면 `wrangler login` 후 Workers + Durable Objects로 브로커 대체 가능 |
+| Supabase MCP | 회사 조직(ignite_fe2)에 연결돼 있음 | 개인 프로젝트는 CLI(`supabase`) 사용. 회사 조직엔 만들지 않음 |
+| 친구용 웹 배포 | Vercel 팀 **zi-gae**, 프로젝트 `argonauts-crew` → https://argonauts-crew.vercel.app | 재배포: `cd web && vercel deploy --prod --yes --scope zi-gae`. 도메인 바꾸면 `app/build.gradle.kts`의 `WEB_URL`도 수정 |
+| 지도 타일 | OpenStreetMap 표준 타일 (키 없음, 사용 정책상 소량만) | 상용 시 유료 타일(또는 CARTO 키 — 현재 CARTO는 키 없으면 "API KEY REQUIRED" 이미지) |
+| 장소 검색 / 시연 경로 | Photon(komoot) · OSRM 공개 서버 (키 없음) | 상용 시 카카오·네이버 로컬 검색 등으로 교체 |
 
 ## 참고 문서
 

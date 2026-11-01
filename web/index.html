@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Argonauts 크루</title>
+<meta name="description" content="Pleos 차량 크루에 휴대폰으로 참여해 위치·목적지·도착 시간을 함께 봅니다.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg:#f2f4f7; --surface:#fff; --surface-alt:#e8ecf2; --outline:#d3d9e2;
+    --text:#0e1726; --sub:#586378; --primary:#0b2d5b; --on-primary:#fff; --accent:#0b87a6;
+    --ok:#167a33; --ok-bg:#e6f3e9; --warn:#9a5b00; --warn-bg:#fbebd3; --bad:#b72c27; --bad-bg:#fae5e4; --info-bg:#e3eefb;
+    --tile-filter: saturate(.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0a111c; --surface:#121c2b; --surface-alt:#1a2639; --outline:#2a3850;
+      --text:#eef2f8; --sub:#9daabd; --primary:#46bcd8; --on-primary:#03141d; --accent:#46bcd8;
+      --ok:#5bd07a; --ok-bg:#12301c; --warn:#f2b54a; --warn-bg:#3a2a0e; --bad:#f07a74; --bad-bg:#3b1716; --info-bg:#15304a;
+      --tile-filter: invert(.9) hue-rotate(180deg) saturate(.3) brightness(.9);
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  button, input { font:inherit; }
+  .wrap { max-width:640px; margin:0 auto; padding:16px; }
+  .brand { display:flex; gap:12px; align-items:center; margin:8px 0 16px; }
+  .brand svg { width:44px; height:44px; border-radius:12px; flex:none; }
+  .brand h1 { font-size:22px; margin:0; }
+  .brand p { margin:2px 0 0; color:var(--sub); font-size:14px; }
+  .card { background:var(--surface); border-radius:18px; padding:18px; margin-bottom:12px; }
+  .card h2 { font-size:19px; margin:0 0 6px; }
+  .muted { color:var(--sub); font-size:14px; }
+  label { display:block; font-size:13px; font-weight:700; color:var(--sub); margin:12px 0 6px; }
+  input[type=text] { width:100%; padding:14px; border-radius:12px; border:2px solid var(--outline); background:var(--surface); color:var(--text); font-size:17px; }
+  input:focus { outline:none; border-color:var(--primary); }
+  .code { font-family: ui-monospace, Menlo, monospace; letter-spacing:4px; text-transform:uppercase; font-size:24px; font-weight:700; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:52px; border:0; border-radius:14px;
+    background:var(--primary); color:var(--on-primary); font-weight:700; font-size:17px; margin-top:14px; cursor:pointer; }
+  .btn.ghost { background:transparent; color:var(--text); border:2px solid var(--outline); }
+  .btn.danger { background:transparent; color:var(--bad); border:2px solid var(--outline); }
+  .btn:disabled { opacity:.45; }
+  .err { color:var(--bad); font-weight:700; margin-top:10px; font-size:14px; }
+  #map { height:46vh; min-height:280px; border-radius:18px; overflow:hidden; margin-bottom:12px; background:var(--surface-alt); }
+  .leaflet-tile-pane { filter: var(--tile-filter); }
+  .dest { background:var(--primary); color:var(--on-primary); }
+  .dest .label { font-size:13px; opacity:.8; font-weight:700; }
+  .dest .name { font-size:22px; font-weight:800; margin:2px 0; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 4px; border-top:1px solid var(--surface-alt); }
+  .row:first-of-type { border-top:0; }
+  .av { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; flex:none; }
+  .grow { flex:1; min-width:0; }
+  .nm { font-weight:700; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ln { color:var(--sub); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .eta { text-align:right; }
+  .eta b { display:block; font-size:18px; }
+  .eta small { color:var(--sub); font-size:12px; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:700; background:var(--surface-alt); color:var(--sub); margin-left:6px; vertical-align:2px; }
+  .chip.lead { background:var(--primary); color:var(--on-primary); }
+  .chip.ok { background:var(--ok-bg); color:var(--ok); }
+  .banner { border-radius:14px; padding:14px; margin-bottom:12px; font-weight:700; border:2px solid; }
+  .banner.info { background:var(--info-bg); border-color:var(--accent); }
+  .banner.ok { background:var(--ok-bg); border-color:var(--ok); color:var(--ok); }
+  .banner.bad { background:var(--bad-bg); border-color:var(--bad); color:var(--bad); }
+  .banner.warn { background:var(--warn-bg); border-color:var(--warn); color:var(--warn); }
+  .result { padding:12px; border-radius:12px; cursor:pointer; }
+  .result.sel { background:var(--info-bg); outline:2px solid var(--accent); }
+  .result b { display:block; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; }
+  .top .code { font-size:18px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--bad); }
+  .dot.on { background:var(--ok); }
+  .pin { padding:4px 10px; border-radius:10px; color:#fff; font-weight:800; font-size:13px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+  .mk { display:flex; flex-direction:column; align-items:center; }
+  .mk .c { width:34px; height:34px; border-radius:50%; border:3px solid #fff; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  .mk .t { margin-top:3px; background:var(--surface); color:var(--text); font-size:12px; font-weight:700; padding:1px 8px; border-radius:9px; white-space:nowrap; }
+  .hidden { display:none !important; }
+  footer { color:var(--sub); font-size:12px; text-align:center; padding:16px 0 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <svg viewBox="0 0 108 108" aria-hidden="true"><path fill="#0B2D5B" d="M0 0h108v108H0z"/><path fill="#fff" d="M54 22v48H28z"/><path fill="#3FB6D3" d="M58 30v40h22z"/><path fill="#fff" d="M24 76h60l-8 10H32z"/><circle cx="38" cy="95" r="4" fill="#E8641B"/><circle cx="54" cy="95" r="4" fill="#3FB6D3"/><circle cx="70" cy="95" r="4" fill="#1F9D4C"/></svg>
+    <div><h1>Argonauts</h1><p>함께 달리는 크루 · 휴대폰으로 참여</p></div>
+  </div>
+
+  <!-- 참여 -->
+  <section id="join" class="card">
+    <h2>크루 참여</h2>
+    <p class="muted">차량 화면의 QR을 찍었다면 코드가 이미 들어가 있어요. 내 위치는 크루를 나가면 바로 공유가 멈춰요.</p>
+    <label for="code">크루 코드</label>
+    <input id="code" class="code" type="text" maxlength="6" autocomplete="off" placeholder="ABC123">
+    <label for="name">내 이름</label>
+    <input id="name" type="text" maxlength="10" placeholder="예: 서연">
+    <button id="joinBtn" class="btn">참여하기</button>
+    <div id="joinErr" class="err hidden"></div>
+  </section>
+
+  <!-- 크루 -->
+  <section id="crew" class="hidden">
+    <div class="top">
+      <div><span id="conn" class="dot"></span><b id="crewName">크루</b> <span class="muted" id="count"></span></div>
+      <div class="code" id="crewCode"></div>
+    </div>
+    <div id="banner"></div>
+    <div id="map"></div>
+    <div class="card dest">
+      <div class="label">크루 목적지</div>
+      <div class="name" id="destName">아직 정하지 않았어요</div>
+      <div id="destSub" style="opacity:.85"></div>
+    </div>
+    <div class="card" id="members"></div>
+    <div class="card">
+      <h2>목적지 변경 요청</h2>
+      <p class="muted">리더가 차에서 수락하면 크루 모두의 목적지가 바뀌어요. 운전 중인 친구 대신 동승자가 보내기 좋아요.</p>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <input id="q" type="text" placeholder="장소 검색 (예: 춘천 닭갈비)">
+        <button id="qBtn" class="btn" style="width:auto; margin:0; padding:0 20px; flex:none; white-space:nowrap">검색</button>
+      </div>
+      <div id="results"></div>
+      <button id="reqBtn" class="btn" disabled>리더에게 요청 보내기</button>
+    </div>
+    <button id="leaveBtn" class="btn danger">크루 나가기</button>
+  </section>
+  <footer>지도 © OpenStreetMap contributors · 검색 Photon · 공모전 시연용</footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+(() => {
+  const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+  const COLORS = ['#2563EB', '#16A34A', '#E2581B', '#8B3FE0', '#D13A35', '#C98A00'];
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const myId = store.get('argo.id') || ('w' + Math.random().toString(36).slice(2, 9));
+  store.set('argo.id', myId);
+
+  const params = new URLSearchParams(location.search);
+  $('code').value = (params.get('c') || store.get('argo.code') || '').toUpperCase();
+  $('name').value = store.get('argo.name') || '';
+
+  let client = null, code = null, prefix = '';
+  let meta = null, request = null;
+  const members = {};
+  let me = null, myColor = 0, watchId = null, lastPos = null, arrivedAt = null, arrivedFor = null;
+  let chosen = null;
+
+  // ---------- 유틸 ----------
+  const R = 6371000;
+  function dist(a, b) {
+    const dLat = (b.lat - a.lat) * Math.PI / 180, dLon = (b.lon - a.lon) * Math.PI / 180;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  }
+  const km = (m) => m < 950 ? Math.round(m / 10) * 10 + 'm' : m < 10000 ? (m / 1000).toFixed(1) + 'km' : Math.round(m / 1000) + 'km';
+  const clock = (ms) => new Date(ms).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const dur = (s) => { const m = Math.ceil(s / 60); return m < 60 ? m + '분' : Math.floor(m / 60) + '시간' + (m % 60 ? ' ' + (m % 60) + '분' : ''); };
+  const same = (a, b, tol = 300) => a && b && dist(a, b) <= tol;
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const STATUS = { DRIVING: '주행 중', STOPPED: '정차 중', ARRIVED: '도착', OFFLINE: '연결 끊김' };
+
+  // ---------- 참여 ----------
+  $('joinBtn').onclick = () => {
+    const c = $('code').value.trim().toUpperCase(), n = $('name').value.trim();
+    if (c.length !== 6) return showJoinErr('6자리 크루 코드를 입력해 주세요.');
+    if (!n) return showJoinErr('이름을 입력해 주세요.');
+    store.set('argo.name', n);
+    $('joinBtn').disabled = true; $('joinBtn').textContent = '크루 찾는 중…';
+    connect(c, n);
+  };
+  function showJoinErr(t) { $('joinErr').textContent = t; $('joinErr').classList.remove('hidden'); }
+
+  function connect(c, name) {
+    code = c; prefix = `argonauts/v1/${c}/`;
+    client = mqtt.connect(BROKER, { clientId: 'argo-web-' + myId + '-' + Date.now() % 100000, reconnectPeriod: 3000, connectTimeout: 10000 });
+    let found = false;
+    const timer = setTimeout(() => {
+      if (!found) { showJoinErr('크루를 찾을 수 없어요. 코드를 확인해 주세요.'); $('joinBtn').disabled = false; $('joinBtn').textContent = '참여하기'; client.end(true); client = null; }
+    }, 8000);
+    client.on('connect', () => { $('conn').classList.add('on'); client.subscribe(prefix + '#', { qos: 1 }); });
+    client.on('close', () => $('conn').classList.remove('on'));
+    client.on('message', (topic, payload) => {
+      const sub = topic.slice(prefix.length); const txt = payload.toString();
+      let json = null; try { json = txt ? JSON.parse(txt) : null; } catch {}
+      if (sub === 'meta') {
+        meta = json;
+        if (meta && !meta.closedAt && !found) { found = true; clearTimeout(timer); enter(name); }
+        if (!meta && found) { alert('리더가 크루를 종료했어요.'); leave(true); return; }
+      } else if (sub === 'req') { request = json; }
+      else if (sub.startsWith('m/')) { const id = sub.slice(2); if (json) members[id] = json; else delete members[id]; }
+      if (found) render();
+    });
+  }
+
+  function enter(name) {
+    store.set('argo.code', code);
+    history.replaceState(null, '', '?c=' + code);
+    const used = new Set(Object.values(members).filter((m) => m.id !== myId).map((m) => m.color));
+    myColor = [0, 1, 2, 3, 4, 5].find((i) => !used.has(i)) ?? (Object.keys(members).length % 6);
+    me = { id: myId, name, color: myColor, kind: 'WEB', status: 'STOPPED', heading: 0 };
+    $('join').classList.add('hidden'); $('crew').classList.remove('hidden');
+    $('crewCode').textContent = code;
+    initMap();
+    if ('geolocation' in navigator) {
+      watchId = navigator.geolocation.watchPosition(onPos, (e) => banner('warn', '위치 권한이 없어서 내 위치는 공유되지 않아요. 크루는 계속 볼 수 있어요.'), { enableHighAccuracy: true, maximumAge: 5000 });
+    }
+    publishMe(); setInterval(publishMe, 5000);
+    setInterval(render, 5000);
+    render();
+  }
+
+  function onPos(p) {
+    const at = { lat: p.coords.latitude, lon: p.coords.longitude };
+    const speed = p.coords.speed ?? (lastPos ? dist(lastPos.at, at) / Math.max(1, (p.timestamp - lastPos.t) / 1000) : 0);
+    lastPos = { at, t: p.timestamp };
+    me.at = at; me.heading = p.coords.heading || 0;
+    me.status = speed > 2 ? 'DRIVING' : 'STOPPED';
+  }
+
+  function publishMe() {
+    if (!client || !me) return;
+    const dest = meta?.dest || null;
+    const m = { ...me, updatedAt: Date.now(), sim: false };
+    if (dest && me.at) {
+      if (arrivedFor && !same(arrivedFor, dest)) { arrivedAt = null; arrivedFor = null; }
+      const d = dist(me.at, dest);
+      if (!arrivedAt && d < 150) { arrivedAt = Date.now(); arrivedFor = dest; }
+      m.dest = dest; m.remainM = Math.round(d * 1.3);
+      if (arrivedAt) { m.status = 'ARRIVED'; m.arrivedAt = arrivedAt; }
+    }
+    if (!m.at) delete m.at;
+    client.publish(prefix + 'm/' + myId, JSON.stringify(m), { qos: 1, retain: true });
+  }
+
+  // ---------- 지도 ----------
+  let map, layers = {};
+  function initMap() {
+    map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.41, 127.09], 11);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+    map.on('dragstart', () => (autoFit = false));
+  }
+  let autoFit = true;
+  function setLayer(key, latlng, html, z = 0) {
+    if (!latlng) { if (layers[key]) { map.removeLayer(layers[key]); delete layers[key]; } return; }
+    const icon = L.divIcon({ className: '', html, iconSize: null, iconAnchor: [0, 0] });
+    if (!layers[key]) layers[key] = L.marker(latlng, { icon, zIndexOffset: z }).addTo(map);
+    else { layers[key].setLatLng(latlng); layers[key].setIcon(icon); }
+  }
+  function memberHtml(m, isMe) {
+    const col = m.status === 'OFFLINE' ? '#9AA3B2' : COLORS[((m.color % 6) + 6) % 6];
+    const inner = m.status === 'ARRIVED' ? '✓' : esc((m.name || '?').slice(0, 1));
+    return `<div class="mk" style="transform:translate(-50%,-20px)"><div class="c" style="background:${col}">${inner}</div><div class="t">${esc(m.name)}${isMe ? ' (나)' : ''}</div></div>`;
+  }
+  const pinHtml = (tag, name, color) => `<div class="pin" style="background:${color};transform:translate(-50%,-120%)">${tag} ${esc(name)}</div>`;
+
+  // ---------- 렌더 ----------
+  function render() {
+    if (!meta) return;
+    const now = Date.now();
+    const list = Object.values(members).map((m) => (!m.sim && now - (m.updatedAt || 0) > 90000 && m.status !== 'ARRIVED') ? { ...m, status: 'OFFLINE' } : m);
+    const dest = meta.dest;
+    $('crewName').textContent = meta.name || '크루';
+    $('count').textContent = list.length + '명';
+    $('destName').textContent = dest ? dest.name : '아직 정하지 않았어요';
+    $('destSub').textContent = dest ? (me?.at ? '내 위치에서 직선 ' + km(dist(me.at, dest)) : '') : '아래에서 목적지를 제안할 수 있어요';
+
+    // 지도
+    const seen = new Set();
+    list.forEach((m) => { if (m.at) { seen.add('m:' + m.id); setLayer('m:' + m.id, [m.at.lat, m.at.lon], memberHtml(m, m.id === myId), m.id === myId ? 1000 : 500); } });
+    Object.keys(layers).filter((k) => k.startsWith('m:') && !seen.has(k)).forEach((k) => setLayer(k, null));
+    setLayer('dest', dest ? [dest.lat, dest.lon] : null, dest ? pinHtml('목적지', dest.name, 'var(--primary)') : '');
+    const wps = list.filter((m) => m.wp).map((m) => m.wp);
+    Object.keys(layers).filter((k) => k.startsWith('wp:')).forEach((k) => setLayer(k, null));
+    wps.forEach((w, i) => setLayer('wp:' + i, [w.lat, w.lon], pinHtml('경유', w.name, '#0b87a6')));
+    const pending = request && request.status === 'PENDING' ? request.place : null;
+    setLayer('req', pending ? [pending.lat, pending.lon] : null, pending ? pinHtml('변경 요청', pending.name, '#c98a00') : '');
+    setLayer('pick', chosen ? [chosen.lat, chosen.lon] : null, chosen ? pinHtml('선택', chosen.name, '#0b87a6') : '');
+    const pts = list.filter((m) => m.at).map((m) => [m.at.lat, m.at.lon]).concat(dest ? [[dest.lat, dest.lon]] : []);
+    if (autoFit && pts.length) { if (pts.length === 1) map.setView(pts[0], 13); else map.fitBounds(pts, { padding: [40, 40], animate: false }); }
+
+    // 크루 목록
+    const rows = list.sort((a, b) => (a.status === 'OFFLINE') - (b.status === 'OFFLINE') || (a.remainM ?? 1e12) - (b.remainM ?? 1e12)).map((m) => {
+      const col = COLORS[((m.color % 6) + 6) % 6];
+      const parts = [];
+      if (m.id !== myId && m.at && me?.at) parts.push(km(dist(m.at, me.at)) + ' 떨어짐');
+      if (m.remainM != null && m.status !== 'ARRIVED') parts.push('남은 ' + km(m.remainM));
+      if (m.wp && m.status !== 'ARRIVED') parts.push(esc(m.wp.name) + ' 들르는 중');
+      else if (m.status !== 'ARRIVED') parts.push(STATUS[m.status] || '');
+      let right;
+      if (m.status === 'ARRIVED') right = `<span class="chip ok">도착${m.arrivedAt ? ' ' + clock(m.arrivedAt) : ''}</span>`;
+      else if (m.status === 'OFFLINE') right = '<span class="chip">연결 끊김</span>';
+      else if (m.remainS != null && dest && same(m.dest, dest)) right = `<b>${clock((m.updatedAt || now) + m.remainS * 1000)}</b><small>도착 예정</small>`;
+      else right = '';
+      return `<div class="row"><div class="av" style="background:${m.status === 'OFFLINE' ? '#9AA3B2' : col}">${esc((m.name || '?').slice(0, 1))}</div>
+        <div class="grow"><div class="nm">${esc(m.name)}${m.id === myId ? ' (나)' : ''}${meta.leaderId === m.id ? '<span class="chip lead">리더</span>' : ''}${m.kind === 'WEB' ? '<span class="chip">휴대폰</span>' : ''}</div>
+        <div class="ln">${parts.join(' · ')}</div></div><div class="eta">${right}</div></div>`;
+    }).join('');
+    $('members').innerHTML = '<h2>크루원</h2>' + rows;
+
+    // 요청 상태 배너
+    if (request && request.fromId === myId) {
+      const t = { PENDING: ['info', `${request.place.name} 변경 요청을 보냈어요 · 리더 응답 대기 중`], ACCEPTED: ['ok', `리더가 ${request.place.name}(으)로 변경을 수락했어요`], DECLINED: ['bad', `리더가 ${request.place.name} 변경을 거절했어요`], EXPIRED: ['bad', `${request.place.name} 변경 요청이 만료됐어요`] }[request.status];
+      if (t) banner(t[0], t[1]);
+    } else if (list.length >= 2 && dest && list.filter((m) => m.kind === 'CAR' && m.status !== 'OFFLINE').every((m) => m.status === 'ARRIVED')) {
+      banner('ok', '모든 차량이 도착했어요 · 원정 완료!');
+    }
+    const busy = request && request.status === 'PENDING' && now < request.createdAt + 180000;
+    $('reqBtn').disabled = !chosen || busy;
+    $('reqBtn').textContent = busy ? '대기 중인 요청이 있어요' : '리더에게 요청 보내기';
+  }
+  function banner(kind, text) { $('banner').innerHTML = `<div class="banner ${kind}">${esc(text)}</div>`; }
+
+  // ---------- 검색 · 요청 ----------
+  async function search() {
+    const q = $('q').value.trim(); if (!q) return;
+    $('results').innerHTML = '<p class="muted">검색 중…</p>';
+    const near = me?.at || meta?.dest;
+    const bias = near ? `&lat=${near.lat}&lon=${near.lon}&location_bias_scale=0.5` : '';
+    try {
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8${bias}`);
+      const j = await r.json();
+      const items = j.features.filter((f) => f.properties.name).map((f) => ({
+        name: f.properties.name, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0],
+        address: ['state', 'city', 'district', 'street'].map((k) => f.properties[k]).filter(Boolean).join(' '),
+      }));
+      $('results').innerHTML = items.length ? '' : '<p class="muted">결과가 없어요</p>';
+      items.forEach((p) => {
+        const d = document.createElement('div'); d.className = 'result';
+        d.innerHTML = `<b>${esc(p.name)}</b><span class="muted">${esc(p.address)}${near ? ' · ' + km(dist(near, p)) : ''}</span>`;
+        d.onclick = () => { chosen = p; [...$('results').children].forEach((x) => x.classList.remove('sel')); d.classList.add('sel'); autoFit = true; render(); };
+        $('results').appendChild(d);
+      });
+    } catch { $('results').innerHTML = '<p class="err">검색에 실패했어요</p>'; }
+  }
+  $('qBtn').onclick = search;
+  $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+  $('reqBtn').onclick = () => {
+    if (!chosen || !client) return;
+    request = { id: Math.random().toString(36).slice(2, 10), fromId: myId, fromName: me.name, place: chosen, status: 'PENDING', createdAt: Date.now() };
+    client.publish(prefix + 'req', JSON.stringify(request), { qos: 1, retain: true });
+    chosen = null; $('results').innerHTML = ''; $('q').value = '';
+    render();
+  };
+
+  // ---------- 나가기 ----------
+  function leave(silent) {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    if (client) { client.publish(prefix + 'm/' + myId, '', { qos: 1, retain: true }, () => client.end()); }
+    store.set('argo.code', '');
+    if (!silent) alert('크루에서 나왔어요. 위치 공유가 멈췄어요.');
+    location.href = location.pathname;
+  }
+  $('leaveBtn').onclick = () => { if (confirm('크루에서 나갈까요? 내 위치 공유가 바로 멈춰요.')) leave(false); };
+
+  if (params.get('c') && $('name').value) $('joinBtn').click();
+})();
+</script>
+</body>
+</html>
