@@ -5,27 +5,34 @@
         android:name="android.hardware.type.automotive"
         android:required="true" />
 
-    <!-- NaviHelper: 위치·목적지·경유지 조회 / 경로·경유지 설정 -->
+    <!-- NaviHelper: 위치·목적지·경유지 조회(NAVI_ROUTE) / 사용자 탭 시 경로·경유지 설정(NAVI_ROUTE_SEARCH) -->
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
-    <!-- Vehicle State: 기어(주행/정차 판정) -->
+    <!-- Vehicle State: 기어(주행/정차 → 지도 간결 모드) -->
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <!-- 크루 동기화(MQTT), 지도 타일, 장소 검색 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 크루에 있는 동안 위치 공유 유지 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
+        android:name=".ArgoApp"
         android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <!-- 검증: 주행 중에도 크루 지도를 보여야 하므로 DO 선언 시 화면이 유지되는지 확인 -->
+        <!-- 주행 중에도 크루 지도를 간결 모드로 보여준다 (검증: DO 선언 시 D·60km/h에서도 표시).
+             주행 중에는 입력·검색·상세 화면을 열지 않고 단일 탭 카드만 허용한다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
             <meta-data
                 android:name="distractionOptimized"
                 android:value="true" />
@@ -36,12 +43,12 @@
         </activity>
 
         <service
-            android:name=".ProbeService"
-            android:exported="true"
+            android:name=".service.CrewService"
+            android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Shares the driver's location and route with their travel group while driving" />
+                android:value="Shares the driver's location, destination and ETA with their travel group while navigating" />
         </service>
     </application>
 </manifest>
