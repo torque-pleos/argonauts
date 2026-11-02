@@ -40,7 +40,7 @@ enum class MemberStatus(val label: String) {
     }
 }
 
-/** 크루원 한 명의 실시간 상태. 동기화 키 `m/{id}`에 그대로 실린다. */
+/** 크루원 한 명의 실시간 상태. MQTT retained 토픽 `.../m/{id}` 에 그대로 실린다. */
 data class Member(
     val id: String,
     val name: String,
@@ -58,8 +58,6 @@ data class Member(
     val arrivedAt: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
     val simulated: Boolean = false,
-    /** 예상 경로(현재 위치 → 경유지 → 목적지), 단순화한 좌표. 없으면 빈 목록. */
-    val route: List<LatLon> = emptyList(),
 ) {
     val initial: String get() = name.trim().take(1).ifBlank { "?" }
 
@@ -77,7 +75,6 @@ data class Member(
         waypointRemainS?.let { put("wpRemainS", it) }
         arrivedAt?.let { put("arrivedAt", it) }
         put("updatedAt", updatedAt); put("sim", simulated)
-        if (route.size >= 2) put("route", RouteShape.encode(route))
     }
 
     companion object {
@@ -98,13 +95,12 @@ data class Member(
                 arrivedAt = if (o.has("arrivedAt")) o.getLong("arrivedAt") else null,
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 simulated = o.optBoolean("sim", false),
-                route = o.optString("route").takeIf { it.isNotBlank() }?.let(RouteShape::decode).orEmpty(),
             )
         }.getOrNull()
     }
 }
 
-/** 크루 공통 정보. 리더만 쓴다. 동기화 키 `meta`. */
+/** 크루 공통 정보. 리더만 쓴다. retained 토픽 `.../meta`. */
 data class CrewMeta(
     val code: String,
     val name: String,
@@ -137,7 +133,7 @@ data class CrewMeta(
 
 enum class RequestStatus { PENDING, ACCEPTED, DECLINED, EXPIRED }
 
-/** 목적지 변경 요청. 크루당 동시에 1건만. 동기화 키 `req`. */
+/** 목적지 변경 요청. 크루당 동시에 1건만. retained 토픽 `.../req`. */
 data class DestRequest(
     val id: String,
     val fromId: String,
