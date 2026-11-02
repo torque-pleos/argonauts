@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 data class RoutePoint(val place: Place, val remainM: Int, val remainS: Int)
@@ -89,8 +91,11 @@ class NaviMonitor(context: Context, private val scope: CoroutineScope) {
         }
 
         override fun onWayPointInfo(list: List<WaypointInfo>) {
-            val wps = list.filter { it.latitude != 0.0 || it.longitude != 0.0 }.map {
-                RoutePoint(Place(it.name.ifBlank { "경유지" }, LatLon(it.latitude, it.longitude), it.address), it.remainDistance, it.remainTime)
+            // addWaypoint로 넣은 경유지는 좌표가 0으로 오기도 한다 → 요청한 장소(이름 일치)의 좌표로 채운다.
+            val wps = list.mapNotNull {
+                val at = if (it.latitude != 0.0 || it.longitude != 0.0) LatLon(it.latitude, it.longitude)
+                else requestedWaypoints[it.name]?.at ?: return@mapNotNull null
+                RoutePoint(Place(it.name.ifBlank { "경유지" }, at, it.address), it.remainDistance, it.remainTime)
             }
             _state.update { it.copy(waypoints = wps) }
         }
@@ -190,7 +195,11 @@ class NaviMonitor(context: Context, private val scope: CoroutineScope) {
     }.onFailure { Log.w(TAG, "requestRoute failed", it) }.isSuccess
 
     /** 경유지 추가. 이미 2개면 false (Pleos 경유지 최대 2). */
+    /** 앱이 넣은 경유지 (이름 → 장소). */
+    private val requestedWaypoints = java.util.concurrent.ConcurrentHashMap<String, Place>()
+
     fun addWaypoint(place: Place): Boolean {
+        requestedWaypoints[place.name] = place
         val count = _state.value.waypoints.size
         if (count >= 2) return false
         return runCatching {
@@ -206,13 +215,16 @@ class NaviMonitor(context: Context, private val scope: CoroutineScope) {
     }
 
     /** 경로를 바꾸지 않고 해당 지점까지 거리·시간만 계산 (만나기 모드). */
-    suspend fun trip(place: Place): Trip? {
+    suspend fun trip(place: Place): Trip? = tripLock.withLock {
         val d = CompletableDeferred<Trip?>()
         pendingTrip = d
         runCatching { navi.requestTrip(TripRequest(latitude = place.at.lat, longitude = place.at.lon, poiId = "", poiName = place.name, poiSubId = "")) }
-            .onFailure { return null }
-        return withTimeoutOrNull(8_000) { d.await() }
+            .onFailure { return@withLock null }
+        withTimeoutOrNull(8_000) { d.await() }
     }
+
+    /** 응답이 콜백 하나로 오므로 한 번에 하나씩 (만나기·휴게소 계산이 겹치지 않게). */
+    private val tripLock = Mutex()
 
     suspend fun bookmarks(): List<Place> {
         val d = CompletableDeferred<List<Place>>()
