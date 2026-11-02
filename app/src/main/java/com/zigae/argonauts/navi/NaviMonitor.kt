@@ -48,6 +48,8 @@ data class NaviState(
     /** 경로 안내 중인 목적지(남은 거리·시간 포함). 안내 없으면 null. */
     val destination: RoutePoint? = null,
     val waypoints: List<RoutePoint> = emptyList(),
+    /** 내비에 걸린 경유지 수 (좌표를 몰라 [waypoints]에서 빠진 것 포함). */
+    val waypointCount: Int = 0,
     val lastError: String? = null,
 )
 
@@ -97,7 +99,7 @@ class NaviMonitor(context: Context, private val scope: CoroutineScope) {
                 else requestedWaypoints[it.name]?.at ?: return@mapNotNull null
                 RoutePoint(Place(it.name.ifBlank { "경유지" }, at, it.address), it.remainDistance, it.remainTime)
             }
-            _state.update { it.copy(waypoints = wps) }
+            _state.update { it.copy(waypoints = wps, waypointCount = list.size) }
         }
 
         override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
@@ -194,13 +196,20 @@ class NaviMonitor(context: Context, private val scope: CoroutineScope) {
         pollSoon()
     }.onFailure { Log.w(TAG, "requestRoute failed", it) }.isSuccess
 
-    /** 경유지 추가. 이미 2개면 false (Pleos 경유지 최대 2). */
-    /** 앱이 넣은 경유지 (이름 → 장소). */
-    private val requestedWaypoints = java.util.concurrent.ConcurrentHashMap<String, Place>()
+    /** 앱이 넣은 경유지 (이름 → 장소). 내비가 좌표를 0으로 돌려줘서 앱을 다시 켜도 채울 수 있게 저장한다. */
+    private val wpPrefs = context.getSharedPreferences("navi_waypoints", Context.MODE_PRIVATE)
+    private val requestedWaypoints = java.util.concurrent.ConcurrentHashMap<String, Place>().apply {
+        wpPrefs.all.forEach { (name, v) ->
+            val ll = (v as? String)?.split(",")?.mapNotNull { it.toDoubleOrNull() }
+            if (ll != null && ll.size == 2) put(name, Place(name, LatLon(ll[0], ll[1])))
+        }
+    }
 
+    /** 경유지 추가. 이미 2개면 false (Pleos 경유지 최대 2). */
     fun addWaypoint(place: Place): Boolean {
         requestedWaypoints[place.name] = place
-        val count = _state.value.waypoints.size
+        wpPrefs.edit().putString(place.name, "${place.at.lat},${place.at.lon}").apply()
+        val count = _state.value.waypointCount
         if (count >= 2) return false
         return runCatching {
             navi.addWaypoint(
