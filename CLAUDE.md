@@ -33,7 +33,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | --- | --- |
 | `core/Model.kt` | `Member`·`CrewMeta`·`DestRequest`(JSON 직렬화, 웹과 같은 형식), `Prompt`(한 번 탭 카드) |
 | `core/Geo.kt` | 거리·방위, 표기(`km`, `duration`, 앞/뒤 `gap`) |
-| `sync/CrewSync.kt` | Supabase 동기화. 테이블 `crew_kv`(code, k = `meta`·`m/{id}`·`req`, v; 삭제 = null). Realtime 구독 확인 → REST 스냅샷 → 이후 변경 수신. 쓰기는 키별 최신값만 REST upsert, 실패 시 재시도 |
+| `sync/CrewSync.kt` | Supabase 동기화. 테이블 `crew_kv`(code, k = `meta`·`m/{id}`·`req`·`meet`, v; 삭제 = null). Realtime 구독 확인 → REST 스냅샷 → 이후 변경 수신. 쓰기는 키별 최신값만 REST upsert, 실패 시 재시도 |
+| `core/Meet.kt` · `engine/MeetFinder.kt` | 모이기 좋은 휴게소: 후보 거르기·점수(`MeetPlanner`), 리더가 30초마다 계산해 `meet` 키로 공유. 각 차량은 추천 휴게소까지 `requestTrip` ETA를 `Member.meetEta`로 공유. 휴게소 목록 `assets/rest_areas.json`(OSM 추출, 형식 `[[이름, 위도, 경도]]`) |
 | `navi/NaviMonitor.kt` | NaviHelper 3초 조회 + 이벤트, `requestRoute`·`addWaypoint`·`requestTrip`·즐겨찾기/최근 |
 | `vehicle/GearMonitor.kt` | 기어 → 주행/정차 |
 | `engine/CrewEngine.kt` | 크루 만들기/참여/나가기, 2초마다 내 상태 발행, 카드 생성, 리더 규칙(내비 직접 변경 반영·요청 만료), 시연 연결 |
@@ -58,6 +59,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | 현재 위치 | 판교(37.41272, 127.09468) 고정. 속도·`emu geo fix`로 안 움직임 → 시연 모드 |
 | 주행 중 화면 | adb 설치 앱은 `not installed from permitted sources` → DO 선언해도 차단 화면. 시연은 설정 > '주행 화면 미리보기' |
 | 지도 타일 | CARTO는 키 없으면 "API KEY REQUIRED" 이미지 → OSM 표준 타일 사용 |
+| 내비 지도에 그리기 | NaviHelper에 오버레이·경로 좌표 조회 API 없음 → 크루원 경로 선은 그리지 않는다(다시 계산한 선은 실제 경로와 달라 제거) |
+| `addWaypoint` 후 경유지 조회 | `onWayPointInfo` 좌표가 0.0으로 옴 → 앱이 넣은 장소(이름 일치) 좌표로 채운다 |
 | Supabase Realtime | 구독 확인(`system` 메시지) 전에 생긴 변경은 오지 않음 → 확인 후 스냅샷을 불러온다. 필터 구독은 DELETE 이벤트를 못 받음 → 삭제는 `v = null` |
 
 ## Virtual Console (Argonauts 에뮬레이터)
