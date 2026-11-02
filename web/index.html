@@ -43,7 +43,8 @@
   .btn.danger { background:transparent; color:var(--bad); border:2px solid var(--outline); }
   .btn:disabled { opacity:.45; }
   .err { color:var(--bad); font-weight:700; margin-top:10px; font-size:14px; }
-  #map { height:46vh; min-height:280px; border-radius:18px; overflow:hidden; margin-bottom:12px; background:var(--surface-alt); }
+  #map { height:46vh; min-height:280px; border-radius:18px; overflow:hidden; margin-bottom:6px; background:var(--surface-alt); }
+  .maphint { margin:0 4px 12px; font-size:12px; color:var(--sub); }
   .leaflet-tile-pane { filter: var(--tile-filter); }
   .dest { background:var(--primary); color:var(--on-primary); }
   .dest .label { font-size:13px; opacity:.8; font-weight:700; }
@@ -107,6 +108,7 @@
     </div>
     <div id="banner"></div>
     <div id="map"></div>
+    <p class="maphint">선은 크루원별 예상 경로예요 (실제 내비 경로와 다를 수 있어요)</p>
     <div class="card dest">
       <div class="label">크루 목적지</div>
       <div class="name" id="destName">아직 정하지 않았어요</div>
@@ -165,6 +167,57 @@
   const dur = (s) => { const m = Math.ceil(s / 60); return m < 60 ? m + '분' : Math.floor(m / 60) + '시간' + (m % 60 ? ' ' + (m % 60) + '분' : ''); };
   const same = (a, b, tol = 300) => a && b && dist(a, b) <= tol;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // ---------- 예상 경로 (차량 앱과 같은 형식: Google polyline 정밀도 5) ----------
+  function decodeRoute(str) {
+    const out = []; let i = 0, lat = 0, lon = 0;
+    const next = () => { let shift = 0, res = 0, b; do { if (i >= str.length) return null; b = str.charCodeAt(i++) - 63; res |= (b & 31) << shift; shift += 5; } while (b >= 32); return res & 1 ? ~(res >> 1) : res >> 1; };
+    while (i < str.length) { const a = next(), b = next(); if (a == null || b == null) break; lat += a; lon += b; out.push([lat / 1e5, lon / 1e5]); }
+    return out;
+  }
+  function encodeRoute(pts) {
+    let out = '', pLat = 0, pLon = 0;
+    const enc = (v) => { v = v < 0 ? ~(v << 1) : v << 1; while (v >= 32) { out += String.fromCharCode((32 | (v & 31)) + 63); v >>= 5; } out += String.fromCharCode(v + 63); };
+    pts.forEach(([la, lo]) => { const a = Math.round(la * 1e5), b = Math.round(lo * 1e5); enc(a - pLat); enc(b - pLon); pLat = a; pLon = b; });
+    return out;
+  }
+  function segDist(p, a, b) {
+    const k = Math.cos(p[0] * Math.PI / 180);
+    const ax = a[1] * k, ay = a[0], bx = b[1] * k, by = b[0], px = p[1] * k, py = p[0];
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)) * 111320;
+  }
+  function remainingRoute(pts, pos) {
+    if (!pos || pts.length < 2) return pts;
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) { const d = segDist(pos, pts[i], pts[i + 1]); if (d < bd) { bd = d; best = i; } }
+    return [pos].concat(pts.slice(best + 1));
+  }
+  function simplify(pts, tol) {
+    if (pts.length <= 2) return pts;
+    const keep = new Array(pts.length).fill(false); keep[0] = keep[pts.length - 1] = true;
+    const st = [[0, pts.length - 1]];
+    while (st.length) { const [a, b] = st.pop(); let md = 0, idx = -1; for (let i = a + 1; i < b; i++) { const d = segDist(pts[i], pts[a], pts[b]); if (d > md) { md = d; idx = i; } } if (idx >= 0 && md > tol) { keep[idx] = true; st.push([a, idx], [idx, b]); } }
+    return pts.filter((_, i) => keep[i]);
+  }
+  // 내 예상 경로 (OSRM). 목적지가 바뀌거나 경로에서 700m 넘게 벗어나면 다시 계산 (최소 60초 간격).
+  let myRoute = [], myRouteKey = null, myRouteAt = 0, routing = false;
+  async function trackMyRoute(at, dest) {
+    if (!at || !dest) { myRoute = []; myRouteKey = null; return; }
+    const key = dest.lat.toFixed(4) + ',' + dest.lon.toFixed(4);
+    const now = Date.now(), pos = [at.lat, at.lon];
+    const off = myRoute.length > 1 && Math.min(...myRoute.slice(0, -1).map((p, i) => segDist(pos, p, myRoute[i + 1])));
+    if (key !== myRouteKey) myRoute = [];
+    const stale = key !== myRouteKey || (now - myRouteAt > 60000 && (myRoute.length === 0 || off > 700));
+    if (!stale || routing) return;
+    routing = true; myRouteKey = key; myRouteAt = now;
+    try {
+      const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${at.lon},${at.lat};${dest.lon},${dest.lat}?overview=full&geometries=geojson`).then((x) => x.json());
+      const c = r?.routes?.[0]?.geometry?.coordinates;
+      if (c && myRouteKey === key) { let tol = 25, s = simplify(c.map(([lo, la]) => [la, lo]), tol); while (s.length > 180) { tol *= 1.6; s = simplify(c.map(([lo, la]) => [la, lo]), tol); } myRoute = s; }
+    } catch {} finally { routing = false; }
+  }
+
   const STATUS = { DRIVING: '주행 중', STOPPED: '정차 중', ARRIVED: '도착', OFFLINE: '연결 끊김' };
 
   // ---------- 참여 ----------
@@ -299,6 +352,7 @@
       if (arrivedAt) { m.status = 'ARRIVED'; m.arrivedAt = arrivedAt; }
     }
     if (!m.at) delete m.at;
+    if (dest && !arrivedAt) { trackMyRoute(me.at, dest); if (myRoute.length > 1) m.route = encodeRoute(myRoute); }
     client.publish('m/' + myId, JSON.stringify(m));
   }
 
@@ -310,6 +364,7 @@
     map.on('dragstart', () => (autoFit = false));
   }
   let autoFit = true;
+  const routeLines = {};
   function setLayer(key, latlng, html, z = 0) {
     if (!latlng) { if (layers[key]) { map.removeLayer(layers[key]); delete layers[key]; } return; }
     const icon = L.divIcon({ className: '', html, iconSize: null, iconAnchor: [0, 0] });
@@ -334,7 +389,18 @@
     $('destName').textContent = dest ? dest.name : '아직 정하지 않았어요';
     $('destSub').textContent = dest ? (me?.at ? '내 위치에서 직선 ' + km(dist(me.at, dest)) : '') : '아래에서 목적지를 제안할 수 있어요';
 
-    // 지도
+    // 지도: 크루원별 예상 경로 (지나온 구간 제외, 내 경로가 맨 위)
+    const lineSeen = new Set();
+    list.filter((m) => m.route && m.at && m.status !== 'OFFLINE' && m.status !== 'ARRIVED')
+      .sort((a, b) => (a.id === myId) - (b.id === myId))
+      .forEach((m) => {
+        const k = 'r:' + m.id; lineSeen.add(k);
+        const pts = remainingRoute(decodeRoute(m.route), [m.at.lat, m.at.lon]);
+        const col = COLORS[((m.color % 6) + 6) % 6], mine = m.id === myId;
+        if (routeLines[k]) map.removeLayer(routeLines[k]);
+        routeLines[k] = L.polyline(pts, { color: col, weight: mine ? 6 : 4, opacity: mine ? 0.9 : 0.6, interactive: false }).addTo(map);
+      });
+    Object.keys(routeLines).filter((k) => !lineSeen.has(k)).forEach((k) => { map.removeLayer(routeLines[k]); delete routeLines[k]; });
     const seen = new Set();
     list.forEach((m) => { if (m.at) { seen.add('m:' + m.id); setLayer('m:' + m.id, [m.at.lat, m.at.lon], memberHtml(m, m.id === myId), m.id === myId ? 1000 : 500); } });
     Object.keys(layers).filter((k) => k.startsWith('m:') && !seen.has(k)).forEach((k) => setLayer(k, null));
