@@ -23,6 +23,8 @@ adb -s emulator-5558 logcat -s Argo/Engine Argo/Navi Argo/Sync Argo/Demo Argo/Ge
 ### 시연 준비 (에뮬레이터는 adb로 한글 입력 불가 → 디버그 빌드 전용 extra)
 
 ```bash
+# 앱을 앞으로 띄우지 않고 시연 스크립트 실행 (내비 위 팝업 알림 확인용)
+adb -s emulator-5558 shell am broadcast -a com.zigae.argonauts.DEMO --es run jiyoung   # minsu | arrive
 adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es name 건우
 adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es dest 남이섬 --ed lat 37.7905 --ed lon 127.5258
 ```
@@ -41,7 +43,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | `demo/DemoSim.kt` | 가상 크루원(민수·지영) + 내 차 시뮬레이션(OSRM 경로, 12배속, 내 차가 달릴 때만 이동), 시연 스크립트 |
 | `net/Web.kt` | OSRM 경로, Photon 장소 검색 |
 | `service/CrewService.kt` | `specialUse` 포그라운드 서비스 (크루에 있는 동안) |
-| `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
+| `service/CrewNotifier.kt` | 앱이 안 보일 때 새 카드·크루원 도착 → 상단 팝업 알림(채널 `crew_news`, IMPORTANCE_HIGH), 알림 버튼은 `ActionReceiver`가 엔진 동작 호출. 앱이 보이는지는 `ArgoApp`의 started 액티비티 수 |
+| `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드, 폭 900dp 미만이면 위 지도 + 아래 패널) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
 | `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `set -a; . ./.env; set +a; supabase db push` (DB 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD`, 커밋 금지) |
 | `web/index.html` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
 | `docs/probe/` | 구현 전 NaviHelper 검증 앱 코드(참고용, 빌드 제외) |
@@ -61,6 +64,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | 지도 타일 | CARTO는 키 없으면 "API KEY REQUIRED" 이미지 → OSM 표준 타일 사용 |
 | 내비 지도에 그리기 | NaviHelper에 오버레이·경로 좌표 조회 API 없음 → 크루원 경로 선은 그리지 않는다(다시 계산한 선은 실제 경로와 달라 제거) |
 | `addWaypoint` 후 경유지 조회 | `onWayPointInfo` 좌표가 0.0으로 옴 → 앱이 넣은 장소(이름 일치) 좌표로 채운다 |
+| 화면 분할 | 앱 영역 1:1 분할 가능(`car.splitscreen_multitasking`). 창 오른쪽 손잡이(⋮)를 왼쪽으로 끌면 앱 841px · 내비 841px. `am start`로 띄우면 창이 이상한 위치(0,0)에 붙으므로 GNB 앱 아이콘으로 띄운다(아이콘 탭은 보이기/숨기기 토글) |
+| 상단 팝업 알림 | IMPORTANCE_HIGH 알림이 내비 위에 약 10초 표시 후 알림 센터로. 액션 버튼 동작 |
 | Supabase Realtime | 구독 확인(`system` 메시지) 전에 생긴 변경은 오지 않음 → 확인 후 스냅샷을 불러온다. 필터 구독은 DELETE 이벤트를 못 받음 → 삭제는 `v = null` |
 
 ## Virtual Console (Argonauts 에뮬레이터)
