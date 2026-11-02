@@ -13,11 +13,13 @@ import com.zigae.argonauts.core.MemberStatus
 import com.zigae.argonauts.core.Place
 import com.zigae.argonauts.core.Prompt
 import com.zigae.argonauts.core.RequestStatus
+import com.zigae.argonauts.core.RouteShape
 import com.zigae.argonauts.demo.DemoSim
 import com.zigae.argonauts.navi.NaviEvent
 import com.zigae.argonauts.navi.NaviMonitor
 import com.zigae.argonauts.navi.NaviState
 import com.zigae.argonauts.navi.Trip
+import com.zigae.argonauts.net.Routing
 import com.zigae.argonauts.service.CrewService
 import com.zigae.argonauts.sync.CrewSync
 import com.zigae.argonauts.vehicle.Gear
@@ -105,6 +107,12 @@ class CrewEngine(private val context: Context) {
 
     /** 내 도착 상태 (목적지가 바뀌면 해제). */
     private var arrivedAt: Long? = null
+
+    // 내 예상 경로 (실제 모드). 내비 SDK가 경로 좌표를 주지 않아 같은 출발·경유·도착으로 다시 계산한다.
+    @Volatile private var myRoute: List<LatLon> = emptyList()
+    private var myRouteKey: String? = null
+    private var myRouteAt = 0L
+    @Volatile private var routing = false
     private var arrivedFor: Place? = null
     /** 리더 내비 목적지 변경 감지용 이전 값. */
     private var lastNaviDest: Place? = null
@@ -283,9 +291,15 @@ class CrewEngine(private val context: Context) {
         val remainS = sim?.remainS ?: n.destination?.remainS
         if (dest != null && arrivedAt == null && ((sim?.arrived == true) || (sim == null && remainM != null && remainM in 1..50))) markArrived()
         val driving = isDriving()
+        val at = sim?.at ?: n.location
+        val route = when {
+            arrivedAt != null || dest == null -> emptyList()
+            sim != null -> sim.route
+            else -> trackRoute(at, dest, n.waypoints.map { it.place })
+        }
         return Member(
             id = p.id, name = p.name.ifBlank { "나" }, colorIndex = p.colorIndex, kind = MemberKind.CAR,
-            at = sim?.at ?: n.location, heading = sim?.heading ?: n.heading,
+            at = at, heading = sim?.heading ?: n.heading,
             status = when {
                 arrivedAt != null -> MemberStatus.ARRIVED
                 driving -> MemberStatus.DRIVING
@@ -297,7 +311,31 @@ class CrewEngine(private val context: Context) {
             waypoint = n.waypoints.firstOrNull()?.place,
             waypointRemainS = sim?.waypointRemainS ?: n.waypoints.firstOrNull()?.remainS,
             arrivedAt = arrivedAt,
+            route = route,
         )
+    }
+
+    /** 목적지·경유지가 바뀌거나 경로에서 크게 벗어나면 예상 경로를 다시 계산한다 (최소 60초 간격). */
+    private fun trackRoute(at: LatLon?, dest: Place, wps: List<Place>): List<LatLon> {
+        at ?: return myRoute
+        val key = (wps + dest).joinToString("|") { "%.4f,%.4f".format(it.at.lat, it.at.lon) }
+        val now = System.currentTimeMillis()
+        val stale = key != myRouteKey ||
+            (now - myRouteAt > ROUTE_RETRY_MS && myRoute.isNotEmpty() && RouteShape.offRouteM(myRoute, at) > OFF_ROUTE_M) ||
+            (myRoute.isEmpty() && now - myRouteAt > ROUTE_RETRY_MS)
+        if (key != myRouteKey) myRoute = emptyList()
+        if (stale && !routing) {
+            routing = true
+            myRouteKey = key
+            myRouteAt = now
+            scope.launch {
+                try {
+                    val line = Routing.route(listOf(at) + wps.map { it.at } + dest.at)
+                    if (myRouteKey == key) myRoute = RouteShape.simplify(line.points)
+                } finally { routing = false }
+            }
+        }
+        return myRoute
     }
 
     private fun Place?.sameOrNull(other: Place?) = this != null && sameAs(other)
@@ -494,6 +532,8 @@ class CrewEngine(private val context: Context) {
         private const val KEY_CREW = "crew"
         const val PALETTE_SIZE = 6
         private const val PUBLISH_MS = 2_000L
+        private const val ROUTE_RETRY_MS = 60_000L
+        private const val OFF_ROUTE_M = 700.0
         private const val OFFLINE_MS = 90_000L
     }
 }

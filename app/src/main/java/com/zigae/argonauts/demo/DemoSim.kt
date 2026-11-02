@@ -7,6 +7,7 @@ import com.zigae.argonauts.core.Member
 import com.zigae.argonauts.core.MemberKind
 import com.zigae.argonauts.core.MemberStatus
 import com.zigae.argonauts.core.Place
+import com.zigae.argonauts.core.RouteShape
 import com.zigae.argonauts.net.PlaceSearch
 import com.zigae.argonauts.net.RouteLine
 import com.zigae.argonauts.net.Routing
@@ -39,8 +40,13 @@ class SimCar(val start: LatLon) {
     val remainM get() = (totalM - progressM).coerceAtLeast(0.0)
     val arrived get() = line != null && remainM < 30
 
+    /** 동기화용 단순화 경로 (경로가 바뀔 때만 계산). */
+    var shape: List<LatLon> = emptyList()
+        private set
+
     fun setRoute(r: RouteLine, waypointIndexHint: LatLon? = null) {
         line = r
+        shape = RouteShape.simplify(r.points)
         cumulative = DoubleArray(r.points.size)
         for (i in 1 until r.points.size) cumulative[i] = cumulative[i - 1] + Geo.distanceM(r.points[i - 1], r.points[i])
         progressM = 0.0
@@ -50,7 +56,7 @@ class SimCar(val start: LatLon) {
     }
 
     fun clearRoute() {
-        line = null; cumulative = DoubleArray(0); progressM = 0.0; waypointAtM = null
+        line = null; cumulative = DoubleArray(0); progressM = 0.0; waypointAtM = null; shape = emptyList()
     }
 
     /** 남은 시간(실제 도로 속도 기준, 시연 배속과 무관하게 현실적인 값). */
@@ -102,7 +108,7 @@ class SimCar(val start: LatLon) {
 }
 
 /** 내 차 시뮬레이션 상태 (에뮬레이터는 현재 위치가 고정이라 시연용). */
-data class SimSelf(val at: LatLon, val heading: Double, val remainM: Int, val remainS: Int, val waypointRemainS: Int?, val arrived: Boolean)
+data class SimSelf(val at: LatLon, val heading: Double, val remainM: Int, val remainS: Int, val waypointRemainS: Int?, val arrived: Boolean, val route: List<LatLon>)
 
 /**
  * 시연 모드: 가상 크루원 2명(민수·지영)이 크루 목적지로 이동하고, 내 차도 기어가 D일 때 경로를 따라 움직인다.
@@ -152,7 +158,7 @@ class DemoSim(private val scope: CoroutineScope) {
                     }
                     self?.let { s ->
                         if (go) s.advance(SPEED_MPS)
-                        selfSnapshot = SimSelf(s.position, s.heading, s.remainM.toInt(), s.remainS(), s.remainToWaypointS(), s.arrived)
+                        selfSnapshot = SimSelf(s.position, s.heading, s.remainM.toInt(), s.remainS(), s.remainToWaypointS(), s.arrived, s.shape)
                     } ?: run { selfSnapshot = null }
                     friends.forEach { publish(it.toMember()) }
                 }
@@ -254,6 +260,7 @@ class DemoSim(private val scope: CoroutineScope) {
             waypointRemainS = c.remainToWaypointS(),
             arrivedAt = arrivedAt,
             simulated = true,
+            route = if (arrivedAt == null) c.shape else emptyList(),
         )
     }
 
