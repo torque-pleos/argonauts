@@ -103,7 +103,7 @@
 | 지도 렌더링 | osmdroid + OpenStreetMap 타일 (주간 채도 낮춤 / 야간 반전 필터). Pleos Map API는 Playground 사용 가능 목록에 없음 | — |
 | Vehicle State | 기어·주행 상태로 정차 판정(지도 화면 전환) | `pleos.car.permission.CAR_DRIVE` |
 | Android 표준 | `distractionOptimized` 선언 + 기어 기반 주행/정차 UI 분리, 포그라운드 서비스(`specialUse`) | — |
-| 외부 | **크루 동기화: MQTT retained 메시지**(EMQX 공개 브로커, 차량 TLS 8883 / 웹 WSS 8084) · 장소 검색 Photon · 시연 경로 OSRM · 친구용 웹 Vercel 정적 배포 | — |
+| 외부 | **크루 동기화: Supabase**(테이블 `crew_kv` + Realtime, 차량·웹 모두 REST 쓰기 + WebSocket 구독) · 장소 검색 Photon · 시연 경로 OSRM · 친구용 웹 Vercel 정적 배포 | — |
 
 ## 5. 평가 항목 대응
 
@@ -178,12 +178,12 @@
  ├ NaviMonitor   NaviHelper 3초 조회·이벤트      ├ 위치: Geolocation
  ├ GearMonitor   Vehicle 기어 → 주행/정차         ├ 지도: Leaflet + OSM
  ├ CrewEngine    상태 기계 · 한 번 탭 카드        └ 요청: Photon 검색 → req 발행
- ├ CrewSync      MQTT (retained)  ◀── argonauts/v1/{코드}/meta · m/{id} · req ──▶  MQTT over WSS
+ ├ CrewSync      Supabase  ◀── crew_kv(code, k = meta · m/{id} · req, v) + Realtime ──▶  Supabase
  ├ DemoSim       가상 크루원·내 차 이동 (OSRM 경로)
  └ CrewService   포그라운드 서비스 (내비가 앞에 있어도 공유 유지)
 ```
 
-- 서버를 따로 두지 않는다: 크루 상태는 MQTT **retained** 메시지(토픽별 마지막 값)로 보관 → 새로 참여한 기기도 즉시 전체 상태를 받는다. 크루 종료 시 빈 retained로 지운다.
+- 별도 앱 서버 없이 Supabase 테이블 `crew_kv`에 크루 코드·키별 **마지막 값**을 보관한다(`supabase/migrations`). 접속 순서: Realtime 구독 → 구독 확인 → REST로 현재 값 불러오기 → 이후 변경은 Realtime으로 받음. 삭제는 `v = null`(필터 구독은 DELETE를 못 받음). 하루 넘게 안 바뀐 행은 pg_cron이 매시간 지운다.
 - 리더가 크루 목적지의 기준. 앱이 경로를 요청한 직후엔 내비가 새 목적지를 보고할 때까지 "내비에서 직접 변경" 감지를 멈춘다(되돌림 방지).
 - 사용자 탭 없이 경로를 바꾸지 않는다(단일 경로 정책). 경로 요청 시 내비 화면이 앞으로 나오는 것은 시스템 동작.
 
@@ -204,7 +204,7 @@
 - **실차 주행 중 화면**: 에뮬레이터는 adb 설치 앱을 허용 출처로 보지 않아 차단(7-1 정정). App Market 설치 시 DO 적용 예상.
 - **실제 위치 이동·갱신 주기**: 에뮬레이터 위치 고정 → 시연 모드로 대체.
 - **두 대 이상의 실제 차량**: 차량 1대(에뮬레이터) + 가상 크루원 + 휴대폰 웹으로 대체.
-- **공개 MQTT 브로커의 보안·가용성**: 시연용. 상용 시 자체 브로커 + 크루별 인증 토큰 필요.
+- **동기화 보안**: 로그인 없이 크루 코드로만 참여(RLS는 anon 읽기·쓰기 허용, 키·크기 제약만). 상용 시 익명 로그인 + 크루 멤버십 RLS 필요.
 
 ### 데모 순서 (약 5분)
 1. 정차(P). 내비 목적지 남이섬 → 앱 첫 화면 "크루 만들기" (크루 목적지 = 남이섬).
@@ -216,16 +216,14 @@
 6. 크루원 마커/목록 탭(정차 중) → "내 차에서 n분" · "○○에게 가기".
 7. 스크립트 ③ 전원 도착 → 원정 완료 카드 → 크루 해산.
 
-## 10. 외부 서비스 · 계정 정리 (나중에 한 번에 처리)
+## 10. 외부 서비스 · 계정 (2026-11-02 정리 완료)
 
-| 항목 | 현재 | 처리할 것 |
+| 항목 | 현재 | 비고 |
 | --- | --- | --- |
-| 크루 동기화 서버 | EMQX **공개** MQTT 브로커 (계정 없음, 보안·SLA 없음) | 상용/본선 시 자체 브로커 또는 관리형(EMQX Cloud 등) + 인증. 원래 후보였던 Supabase는 개인 조직(zigae) 무료 활성 프로젝트 2개(hermes, onlyrally)로 한도 → 하나를 일시정지하거나 유료 전환 필요 |
-| Cloudflare | `wrangler` 로그인 만료 (비대화형이라 재로그인 불가) | 필요하면 `wrangler login` 후 Workers + Durable Objects로 브로커 대체 가능 |
-| Supabase MCP | 회사 조직(ignite_fe2)에 연결돼 있음 | 개인 프로젝트는 CLI(`supabase`) 사용. 회사 조직엔 만들지 않음 |
+| 크루 동기화 | **Supabase** 프로젝트 `argonauts` (`qhjlapaudkpxboonbwts`, 서울), 조직 `tennis` 계정 | 스키마: `supabase/migrations`. 변경 시 `supabase db push`. 앱·웹에는 publishable 키(클라이언트 공개용)만 넣는다. DB 비밀번호·secret 키는 커밋하지 않는다 |
 | 친구용 웹 배포 | Vercel 팀 **zi-gae**, 프로젝트 `argonauts-crew` → https://argonauts-crew.vercel.app | 재배포: `cd web && vercel deploy --prod --yes --scope zi-gae`. 도메인 바꾸면 `app/build.gradle.kts`의 `WEB_URL`도 수정 |
-| 지도 타일 | OpenStreetMap 표준 타일 (키 없음, 사용 정책상 소량만) | 상용 시 유료 타일(또는 CARTO 키 — 현재 CARTO는 키 없으면 "API KEY REQUIRED" 이미지) |
-| 장소 검색 / 시연 경로 | Photon(komoot) · OSRM 공개 서버 (키 없음) | 상용 시 카카오·네이버 로컬 검색 등으로 교체 |
+| 지도 타일 | OpenStreetMap 표준 타일 (키 없음) | 공모전 범위에선 유지. 상용 시 유료 타일 |
+| 장소 검색 / 시연 경로 | Photon(komoot) · OSRM 공개 서버 (키 없음) | 공모전 범위에선 유지. 상용 시 카카오·네이버 로컬 검색 등 |
 
 ## 참고 문서
 

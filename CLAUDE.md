@@ -17,8 +17,8 @@ adb -s emulator-5558 logcat -s Argo/Engine Argo/Navi Argo/Sync Argo/Demo Argo/Ge
   ```bash
   ~/Library/Android/sdk/emulator/emulator -avd Pleos_Connect_Argonauts -port 5558 -no-snapshot -no-boot-anim -no-metrics -no-audio
   ```
-- 구성: AGP 8.13.2 · Gradle 8.14.3 · Kotlin 2.2.21 · Compose · compileSdk 36 / targetSdk 34 / minSdk 28. SDK: Vehicle 2.3.2, NaviHelper 3.0.5. 그 외 Paho MQTT, osmdroid, ZXing.
-- 비밀값 없음 (공개 브로커·키 없는 API만 사용). `web/.vercel`, `web/.env.local`은 커밋 금지(.gitignore).
+- 구성: AGP 8.13.2 · Gradle 8.14.3 · Kotlin 2.2.21 · Compose · compileSdk 36 / targetSdk 34 / minSdk 28. SDK: Vehicle 2.3.2, NaviHelper 3.0.5. 그 외 OkHttp(Supabase REST·Realtime), osmdroid, ZXing.
+- 앱·웹에 넣는 건 Supabase **publishable** 키뿐(공개용). DB 비밀번호·secret 키는 커밋 금지. `web/.vercel`, `web/.env.local`은 커밋 금지(.gitignore).
 
 ### 시연 준비 (에뮬레이터는 adb로 한글 입력 불가 → 디버그 빌드 전용 extra)
 
@@ -33,7 +33,7 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | --- | --- |
 | `core/Model.kt` | `Member`·`CrewMeta`·`DestRequest`(JSON 직렬화, 웹과 같은 형식), `Prompt`(한 번 탭 카드) |
 | `core/Geo.kt` | 거리·방위, 표기(`km`, `duration`, 앞/뒤 `gap`) |
-| `sync/CrewSync.kt` | MQTT retained 동기화. 토픽 `argonauts/v1/{코드}/meta`·`m/{id}`·`req`. 끊김 중 발행은 토픽별 최신값 보관 후 재전송 |
+| `sync/CrewSync.kt` | Supabase 동기화. 테이블 `crew_kv`(code, k = `meta`·`m/{id}`·`req`, v; 삭제 = null). Realtime 구독 확인 → REST 스냅샷 → 이후 변경 수신. 쓰기는 키별 최신값만 REST upsert, 실패 시 재시도 |
 | `navi/NaviMonitor.kt` | NaviHelper 3초 조회 + 이벤트, `requestRoute`·`addWaypoint`·`requestTrip`·즐겨찾기/최근 |
 | `vehicle/GearMonitor.kt` | 기어 → 주행/정차 |
 | `engine/CrewEngine.kt` | 크루 만들기/참여/나가기, 2초마다 내 상태 발행, 카드 생성, 리더 규칙(내비 직접 변경 반영·요청 만료), 시연 연결 |
@@ -41,7 +41,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | `net/Web.kt` | OSRM 경로, Photon 장소 검색 |
 | `service/CrewService.kt` | `specialUse` 포그라운드 서비스 (크루에 있는 동안) |
 | `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
-| `web/index.html` | 친구용 휴대폰 웹 (Leaflet + mqtt.js). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
+| `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `supabase link --project-ref qhjlapaudkpxboonbwts` 후 `supabase db push` |
+| `web/index.html` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
 | `docs/probe/` | 구현 전 NaviHelper 검증 앱 코드(참고용, 빌드 제외) |
 
 ## 에뮬레이터에서 확인한 사실
@@ -57,7 +58,7 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | 현재 위치 | 판교(37.41272, 127.09468) 고정. 속도·`emu geo fix`로 안 움직임 → 시연 모드 |
 | 주행 중 화면 | adb 설치 앱은 `not installed from permitted sources` → DO 선언해도 차단 화면. 시연은 설정 > '주행 화면 미리보기' |
 | 지도 타일 | CARTO는 키 없으면 "API KEY REQUIRED" 이미지 → OSM 표준 타일 사용 |
-| 공개 MQTT | `broker.emqx.io`만 동작 (HiveMQ·mosquitto 공개 브로커는 연결 실패) |
+| Supabase Realtime | 구독 확인(`system` 메시지) 전에 생긴 변경은 오지 않음 → 확인 후 스냅샷을 불러온다. 필터 구독은 DELETE 이벤트를 못 받음 → 삭제는 `v = null` |
 
 ## Virtual Console (Argonauts 에뮬레이터)
 
