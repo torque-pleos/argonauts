@@ -1,5 +1,8 @@
 package com.zigae.argonauts.ui
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -91,7 +95,7 @@ private fun NameScreen(engine: CrewEngine, driving: Boolean) {
     val c = Argo.c
     var name by remember { mutableStateOf("") }
     Box(Modifier.fillMaxSize().padding(48.dp), contentAlignment = Alignment.Center) {
-        Column(Modifier.width(880.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.widthIn(max = 880.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Brand()
             Panel(Modifier.fillMaxWidth(), padding = 32.dp) {
                 Text("크루에 보일 이름", style = T.title, color = c.text)
@@ -131,8 +135,10 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
             IconButton({ settings = true }, Modifier.size(72.dp), enabled = !driving) { Icon(Icons.Filled.Settings, "설정", tint = c.textSub, modifier = Modifier.size(36.dp)) }
         }
         ParkOnly(driving)
-        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            Panel(Modifier.weight(1f).fillMaxHeight(), padding = 36.dp) {
+        // 내비 옆 화면 분할(좁은 폭)이면 두 칸을 위아래로 쌓는다
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        val narrow = maxWidth < 900.dp
+        val createPanel: @Composable (Modifier) -> Unit = { m -> Panel(m, padding = 36.dp) {
                 Chip("리더", c.primary, c.onPrimary)
                 Spacer(Modifier.height(16.dp))
                 Text("크루 만들기", style = T.display, color = c.text)
@@ -149,10 +155,11 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
                     placeholder = { Text("크루 이름 (예: 가평 캠핑)", style = T.body, color = c.textSub) },
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.primary, unfocusedBorderColor = c.outline),
                 )
+                Spacer(Modifier.height(20.dp))
                 Spacer(Modifier.weight(1f))
                 BigButton("크루 만들기", { engine.createCrew(crewName) }, Modifier.fillMaxWidth(), enabled = !driving, icon = Icons.Filled.Add)
-            }
-            Panel(Modifier.weight(1f).fillMaxHeight(), padding = 36.dp) {
+            } }
+        val joinPanel: @Composable (Modifier) -> Unit = { m -> Panel(m, padding = 36.dp) {
                 Chip("크루원", c.surfaceAlt, c.text)
                 Spacer(Modifier.height(16.dp))
                 Text("코드로 참여", style = T.display, color = c.text)
@@ -166,6 +173,7 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.primary, unfocusedBorderColor = c.outline),
                 )
                 error?.let { Text(it, style = T.bodyB, color = c.danger, modifier = Modifier.padding(top = 10.dp)) }
+                Spacer(Modifier.height(20.dp))
                 Spacer(Modifier.weight(1f))
                 BigButton(
                     if (joining) "찾는 중…" else "참여하기",
@@ -178,7 +186,14 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
                     },
                     Modifier.fillMaxWidth(), enabled = !driving && code.length == 6 && !joining, icon = Icons.Filled.ArrowForward,
                 )
-            }
+            } }
+        if (narrow) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            joinPanel(Modifier.fillMaxWidth())
+            createPanel(Modifier.fillMaxWidth())
+        } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            createPanel(Modifier.weight(1f).fillMaxHeight())
+            joinPanel(Modifier.weight(1f).fillMaxHeight())
+        }
         }
     }
     if (settings) SettingsDialog(engine, inCrew = false) { settings = false }

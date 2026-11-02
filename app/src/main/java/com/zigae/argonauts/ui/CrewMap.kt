@@ -204,7 +204,11 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
 }
 
 private fun fit(map: MapView, pts: List<LatLon>, focus: LatLon?) {
-    if (map.width == 0 || map.height == 0) return
+    if (map.width == 0 || map.height == 0) {
+        // 화면 분할로 지도가 새로 만들어진 직후: 크기가 정해지면 맞춘다
+        map.addOnFirstLayoutListener { _, _, _, _, _ -> fit(map, pts, focus) }
+        return
+    }
     if (focus != null && !pts.isEmpty() && map.tag != "driving") {
         map.controller.setCenter(GeoPoint(focus.lat, focus.lon)); return
     }

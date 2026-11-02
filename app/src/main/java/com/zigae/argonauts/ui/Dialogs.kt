@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -67,7 +68,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ArgoDialog(onDismiss: () -> Unit, width: Dp = 880.dp, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.width(width).clip(RoundedCornerShape(28.dp)).background(Argo.c.surface).padding(32.dp)) { content() }
+        Box(Modifier.padding(16.dp).widthIn(max = width).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Argo.c.surface).padding(32.dp)) { content() }
     }
 }
 
@@ -305,7 +306,7 @@ fun SummaryDialog(ui: CrewUi, onLeave: () -> Unit) {
     val started = ui.meta?.createdAt ?: arrived.firstOrNull()?.arrivedAt ?: System.currentTimeMillis()
     val last = arrived.lastOrNull()?.arrivedAt ?: System.currentTimeMillis()
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-        Column(Modifier.width(820.dp).clip(RoundedCornerShape(28.dp)).background(c.surface)) {
+        Column(Modifier.padding(16.dp).widthIn(max = 820.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surface)) {
             Column(Modifier.fillMaxWidth().background(c.primary).padding(32.dp)) {
                 Text("원정 완료", style = T.label, color = c.onPrimary.copy(alpha = 0.8f))
                 Text("${ui.meta?.name ?: "크루"} · ${ui.destination?.name ?: ""}", style = T.title, color = c.onPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)

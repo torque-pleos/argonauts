@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -75,8 +77,12 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
     val pendingPlace = ui.request?.takeIf { it.status == RequestStatus.PENDING }?.place
     val waypoints = ui.all.mapNotNull { m -> m.waypoint?.let { it to m.colorIndex } }.distinctBy { it.first.name }
 
-    Row(Modifier.fillMaxSize().background(c.bg)) {
-        Box(Modifier.weight(1f).fillMaxHeight().padding(16.dp).clip(RoundedCornerShape(24.dp))) {
+    // 내비와 나란히(화면 분할, 앱 영역 절반) 띄우면 폭이 좁다 → 위 지도 + 아래 카드·크루 목록
+    BoxWithConstraints(Modifier.fillMaxSize().background(c.bg)) {
+    val compact = maxWidth < 900.dp
+    LaunchedEffect(compact) { fit++ } // 지도 크기가 바뀌면 크루 전체가 보이게 다시 맞춘다
+    val mapArea: @Composable (Modifier) -> Unit = { mapModifier ->
+        Box(mapModifier.clip(RoundedCornerShape(24.dp))) {
             CrewMap(
                 model = MapModel(ui.all, ui.me?.id ?: "", ui.destination, waypoints, pendingPlace, picked, ui.driving, c.night, fit, focusId,
                     spots = spots.map { it.place }, spotIndex = spots.indexOf(spot)),
@@ -89,16 +95,21 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                 modifier = Modifier.fillMaxSize(),
                 onSpotTap = { i -> spotId = spots.getOrNull(i)?.id },
             )
-            MapHeader(ui, Modifier.align(Alignment.TopStart).padding(16.dp))
+            MapHeader(ui, compact, Modifier.align(Alignment.TopStart).padding(if (compact) 10.dp else 16.dp))
             val preview by engine.drivingPreview.collectAsState()
             if (preview) {
                 MapIconButton(Icons.Filled.Close, "미리보기 끝", Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 16.dp)) { engine.setDrivingPreview(false) }
             }
             if (!ui.driving) {
                 Row(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MapIconButton(Icons.Filled.Refresh, "전체 보기") { focusId = null; fit++ }
+                    if (compact) {
+                        // 좁은 화면: 크루 코드 칸 대신 지도 위 아이콘
+                        MapIconButton(Icons.Filled.Share, null) { showQr = true }
+                        MapIconButton(Icons.Filled.Settings, null) { showSettings = true }
+                        MapIconButton(Icons.Filled.Refresh, null) { focusId = null; fit++ }
+                    } else MapIconButton(Icons.Filled.Refresh, "전체 보기") { focusId = null; fit++ }
                 }
-                if (picked == null) {
+                if (picked == null && !compact) {
                     Text(
                         "지도를 길게 누르면 그 위치로 목적지를 정할 수 있어요",
                         style = T.small, color = c.textSub,
@@ -117,6 +128,8 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                 )
             }
         }
+    }
+    val side: @Composable (Modifier) -> Unit = { sideModifier ->
         SidePanel(
             engine, ui, spot, spots.size,
             onNextSpot = { spotId = spots[(spots.indexOf(spot) + 1) % spots.size].id },
@@ -128,8 +141,17 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                 focusId = m.id
                 if (!ui.driving && m.id != ui.me?.id) detail = m
             },
-            modifier = Modifier.width(560.dp).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
+            modifier = sideModifier,
+            compact = compact,
         )
+    }
+    if (compact) Column(Modifier.fillMaxSize()) {
+        mapArea(Modifier.fillMaxWidth().fillMaxHeight(0.28f).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp))
+        side(Modifier.fillMaxWidth().weight(1f).padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
+    } else Row(Modifier.fillMaxSize()) {
+        mapArea(Modifier.weight(1f).fillMaxHeight().padding(16.dp))
+        side(Modifier.width(560.dp).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp))
+    }
     }
 
     if (showQr) QrDialog(ui.code, ui.meta?.name ?: "크루") { showQr = false }
@@ -141,16 +163,16 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
 }
 
 @Composable
-private fun MapHeader(ui: CrewUi, modifier: Modifier) {
+private fun MapHeader(ui: CrewUi, compact: Boolean, modifier: Modifier) {
     val c = Argo.c
     Row(
         modifier.clip(RoundedCornerShape(16.dp)).background(c.surface.copy(alpha = 0.95f)).padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Dot(if (ui.connected) c.success else c.danger, 14.dp)
-        Text(ui.meta?.name ?: "크루", style = T.head, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(IntrinsicWidthCap))
-        Chip("${ui.all.size}대", c.surfaceAlt, c.text)
-        if (ui.driving) Chip("주행 중 · 간결 모드", c.infoContainer, c.primary)
+        Text(ui.meta?.name ?: "크루", style = T.head, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = if (compact) 180.dp else IntrinsicWidthCap))
+        if (!compact) Chip("${ui.all.size}대", c.surfaceAlt, c.text)
+        if (ui.driving) Chip(if (compact) "주행 중" else "주행 중 · 간결 모드", c.infoContainer, c.primary)
         if (!ui.connected) Chip("연결 중…", c.warnContainer, c.warn)
     }
 }
@@ -158,21 +180,21 @@ private fun MapHeader(ui: CrewUi, modifier: Modifier) {
 private val IntrinsicWidthCap = 360.dp
 
 @Composable
-private fun MapIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MapIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Argo.c
     Row(
-        modifier.clip(RoundedCornerShape(16.dp)).background(c.surface.copy(alpha = 0.95f)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 14.dp),
+        modifier.clip(RoundedCornerShape(16.dp)).background(c.surface.copy(alpha = 0.95f)).clickable(onClick = onClick).padding(horizontal = if (label == null) 14.dp else 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(icon, null, tint = c.text, modifier = Modifier.size(26.dp))
-        Text(label, style = T.label, color = c.text)
+        Icon(icon, label, tint = c.text, modifier = Modifier.size(26.dp))
+        if (label != null) Text(label, style = T.label, color = c.text)
     }
 }
 
 @Composable
 private fun PickedCard(p: Place, isLeader: Boolean, onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Modifier) {
     val c = Argo.c
-    Panel(modifier.width(640.dp), border = c.accent) {
+    Panel(modifier.widthIn(max = 640.dp), border = c.accent) {
         RowCentered {
             Icon(Icons.Filled.Place, null, tint = c.accent, modifier = Modifier.size(32.dp))
             Column(Modifier.weight(1f)) {
@@ -201,11 +223,14 @@ private fun SidePanel(
     onLeave: () -> Unit,
     onMember: (Member) -> Unit,
     modifier: Modifier,
+    compact: Boolean = false,
 ) {
     val c = Argo.c
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // 크루 코드 + 공유
-        Panel(Modifier.fillMaxWidth(), padding = 16.dp) {
+    // 좁은 화면: 세로 공간이 모자라 패널 전체를 스크롤 (크루 목록은 카드 아래로 이어진다)
+    val scroll = rememberScrollState()
+    Column(if (compact) modifier.verticalScroll(scroll) else modifier, verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
+        // 크루 코드 + 공유 (좁은 화면에선 지도 위 아이콘으로)
+        if (!compact) Panel(Modifier.fillMaxWidth(), padding = 16.dp) {
             RowCentered {
                 Column(Modifier.weight(1f)) {
                     Text("크루 코드", style = T.label, color = c.textSub)
@@ -223,12 +248,12 @@ private fun SidePanel(
         spot?.let { MeetCard(engine, ui, it, spotCount, onNextSpot) }
 
         // 한 번 탭 카드
-        ui.prompts.take(if (spot != null) 2 else 3).forEach { p -> PromptCard(engine, p) }
+        ui.prompts.take(if (spot != null || compact) 2 else 3).forEach { p -> PromptCard(engine, p) }
 
         // 크루 리스트
-        Panel(Modifier.fillMaxWidth().weight(1f), padding = 12.dp) {
+        Panel(if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().weight(1f), padding = 12.dp) {
             SectionLabel("크루원", Modifier.padding(start = 8.dp, top = 4.dp))
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(if (compact) Modifier else Modifier.verticalScroll(rememberScrollState())) {
                 ui.me?.let { MemberRow(it, ui, me = true) { onMember(it) } }
                 ui.others.forEach { m -> MemberRow(m, ui, me = false) { onMember(m) } }
                 if (ui.others.isEmpty()) {
