@@ -56,6 +56,7 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
     val c = Argo.c
     var fit by remember { mutableIntStateOf(0) }
     var focusId by remember { mutableStateOf<String?>(null) }
+    var showRoutes by remember { mutableStateOf(true) }
     var picked by remember { mutableStateOf<Place?>(null) }
     var detail by remember { mutableStateOf<Member?>(null) }
     var showPicker by remember { mutableStateOf(false) }
@@ -74,7 +75,7 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
     Row(Modifier.fillMaxSize().background(c.bg)) {
         Box(Modifier.weight(1f).fillMaxHeight().padding(16.dp).clip(RoundedCornerShape(24.dp))) {
             CrewMap(
-                model = MapModel(ui.all, ui.me?.id ?: "", ui.destination, waypoints, pendingPlace, picked, ui.driving, c.night, fit, focusId),
+                model = MapModel(ui.all, ui.me?.id ?: "", ui.destination, waypoints, pendingPlace, picked, ui.driving, c.night, fit, focusId, showRoutes),
                 colors = c,
                 onLongPress = { at -> if (!ui.driving) picked = Place("지도에서 고른 위치", at) },
                 onMarkerTap = { id ->
@@ -89,12 +90,13 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                 MapIconButton(Icons.Filled.Close, "미리보기 끝", Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 16.dp)) { engine.setDrivingPreview(false) }
             }
             if (!ui.driving) {
-                Row(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.align(Alignment.TopEnd).padding(16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     MapIconButton(Icons.Filled.Refresh, "전체 보기") { focusId = null; fit++ }
+                    MapIconButton(RouteIcon, if (showRoutes) "경로 숨기기" else "경로 보기") { showRoutes = !showRoutes }
                 }
                 if (picked == null) {
                     Text(
-                        "지도를 길게 누르면 그 위치로 목적지를 정할 수 있어요",
+                        if (showRoutes) "선은 크루원별 예상 경로예요 · 길게 누르면 목적지로 정할 수 있어요" else "지도를 길게 누르면 그 위치로 목적지를 정할 수 있어요",
                         style = T.small, color = c.textSub,
                         modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(c.surface.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 8.dp),
                     )
@@ -149,6 +151,16 @@ private fun MapHeader(ui: CrewUi, modifier: Modifier) {
 }
 
 private val IntrinsicWidthCap = 360.dp
+
+/** 경로 아이콘 (Material Symbols 'route' 모양, core 아이콘 세트에 없어 직접 정의). */
+private val RouteIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("route", 24.dp, 24.dp, 24f, 24f).addPath(
+        androidx.compose.ui.graphics.vector.addPathNodes(
+            "M19,15.18V7c0-2.21-1.79-4-4-4s-4,1.79-4,4v10c0,1.1-0.9,2-2,2s-2-0.9-2-2V8.82C8.16,8.4,9,7.3,9,6c0-1.66-1.34-3-3-3S3,4.34,3,6c0,1.3,0.84,2.4,2,2.82V17c0,2.21,1.79,4,4,4s4-1.79,4-4V7c0-1.1,0.9-2,2-2s2,0.9,2,2v8.18c-1.16,0.41-2,1.51-2,2.82c0,1.66,1.34,3,3,3s3-1.34,3-3C21,16.7,20.16,15.6,19,15.18z",
+        ),
+        fill = androidx.compose.ui.graphics.SolidColor(androidx.compose.ui.graphics.Color.Black),
+    ).build()
+}
 
 @Composable
 private fun MapIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {

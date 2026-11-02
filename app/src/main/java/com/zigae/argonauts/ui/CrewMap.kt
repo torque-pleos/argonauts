@@ -20,6 +20,7 @@ import com.zigae.argonauts.core.LatLon
 import com.zigae.argonauts.core.Member
 import com.zigae.argonauts.core.MemberStatus
 import com.zigae.argonauts.core.Place
+import com.zigae.argonauts.core.RouteShape
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -28,6 +29,7 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 
 /** 지도 위 표시 대상 전체. */
 data class MapModel(
@@ -41,6 +43,8 @@ data class MapModel(
     val night: Boolean,
     val fitRequest: Int,
     val focusId: String?,
+    /** 크루원 예상 경로 표시. */
+    val showRoutes: Boolean = true,
 )
 
 /** OSM 표준 타일 (osmdroid 기본, 앱 식별 User-Agent 필수). 주간은 채도를 낮춰 간결하게, 야간은 반전. */
@@ -56,6 +60,8 @@ private val nightFilter = ColorMatrixColorFilter(
 
 private class MapHolder(val view: MapView) {
     val markers = HashMap<String, Marker>()
+    val lines = HashMap<String, Polyline>()
+    val lineKeys = HashMap<String, String>()
     val iconKeys = HashMap<String, String>()
     var fitted = -1
     var night: Boolean? = null
@@ -122,6 +128,8 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
     map.tag = if (m.driving) "driving" else "parked"
     if (m.driving) map.setOnTouchListener { _, _ -> true }
     else map.setOnTouchListener { _, e -> if (e.actionMasked == android.view.MotionEvent.ACTION_MOVE) h.autoFit = false; false }
+
+    renderRoutes(h, m, colors, ctx)
 
     val wanted = HashMap<String, Pair<GeoPoint, () -> Bitmap>>()
     m.members.forEach { mem ->
@@ -190,6 +198,45 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
     map.invalidate()
 }
 
+/**
+ * 크루원별 예상 경로 선. 지나온 구간은 빼고 현재 위치부터 그린다. 내 경로는 굵게, 다른 크루원은 반투명.
+ * 마커보다 아래(타일 바로 위)에 둔다.
+ */
+private fun renderRoutes(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context) {
+    val map = h.view
+    val wanted = HashMap<String, Member>()
+    if (m.showRoutes) m.members.forEach { mem ->
+        if (mem.route.size >= 2 && mem.status != MemberStatus.OFFLINE && mem.status != MemberStatus.ARRIVED && mem.at != null) wanted[mem.id] = mem
+    }
+    (h.lines.keys - wanted.keys).forEach { id -> map.overlays.remove(h.lines.remove(id)); h.lineKeys.remove(id) }
+    wanted.forEach { (id, mem) ->
+        val me = id == m.myId
+        val pts = RouteShape.remaining(mem.route, mem.at)
+        val key = "${pts.size}|${pts.firstOrNull()}|${pts.lastOrNull()}|${mem.colorIndex}|${m.night}|${m.focusId == id}"
+        if (h.lineKeys[id] == key) return@forEach
+        val line = h.lines.getOrPut(id) {
+            Polyline(map).apply {
+                infoWindow = null
+                setOnClickListener { _, _, _ -> false }
+                outlinePaint.strokeCap = Paint.Cap.ROUND
+                outlinePaint.strokeJoin = Paint.Join.ROUND
+                outlinePaint.isAntiAlias = true
+            }
+        }
+        val base = colors.crewColor(mem.colorIndex).toArgb()
+        val focus = m.focusId == id
+        val alpha = if (me || focus) 0xE6 else 0x99
+        line.outlinePaint.color = (alpha shl 24) or (base and 0x00FFFFFF)
+        line.outlinePaint.strokeWidth = dp(ctx, if (me) 7f else if (focus) 6f else 4.5f)
+        line.setPoints(pts.map { GeoPoint(it.lat, it.lon) })
+        h.lineKeys[id] = key
+    }
+    // 순서: 지도 이벤트 오버레이 다음, 마커 아래. 같은 길을 겹쳐 가면 내 경로가 보이도록 내 선을 맨 위에.
+    val ordered = h.lines.entries.sortedBy { (id, _) -> if (id == m.myId) 2 else if (id == m.focusId) 1 else 0 }.map { it.value }
+    ordered.forEach { map.overlays.remove(it) }
+    ordered.forEachIndexed { i, l -> map.overlays.add((1 + i).coerceAtMost(map.overlays.size), l) }
+}
+
 private fun fit(map: MapView, pts: List<LatLon>, focus: LatLon?) {
     if (map.width == 0 || map.height == 0) return
     if (focus != null && !pts.isEmpty() && map.tag != "driving") {
@@ -203,7 +250,8 @@ private fun fit(map: MapView, pts: List<LatLon>, focus: LatLon?) {
     val box = BoundingBox.fromGeoPoints(pts.map { GeoPoint(it.lat, it.lon) })
     val padLat = (box.latNorth - box.latSouth).coerceAtLeast(0.004) * 0.25
     val padLon = (box.lonEast - box.lonWest).coerceAtLeast(0.004) * 0.25
-    val padded = BoundingBox(box.latNorth + padLat, box.lonEast + padLon, box.latSouth - padLat, box.lonWest - padLon)
+    // 위쪽은 헤더·버튼에 가리지 않게 더 넉넉히
+    val padded = BoundingBox(box.latNorth + padLat * 1.8, box.lonEast + padLon, box.latSouth - padLat, box.lonWest - padLon)
     map.zoomToBoundingBox(padded, false)
 }
 
