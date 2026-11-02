@@ -72,6 +72,10 @@
   .top .code { font-size:18px; }
   .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--bad); }
   .dot.on { background:var(--ok); }
+  .meet { background:var(--ok-bg); border:2px solid var(--ok); }
+  .meet .label { font-size:13px; font-weight:700; color:var(--ok); display:flex; justify-content:space-between; }
+  .meet .label a { color:var(--primary); cursor:pointer; }
+  .meet .name { font-size:20px; font-weight:800; margin:2px 0; }
   .pin { padding:4px 10px; border-radius:10px; color:#fff; font-weight:800; font-size:13px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.25); }
   .mk { display:flex; flex-direction:column; align-items:center; }
   .mk .c { width:34px; height:34px; border-radius:50%; border:3px solid #fff; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.3); }
@@ -112,6 +116,7 @@
       <div class="name" id="destName">아직 정하지 않았어요</div>
       <div id="destSub" style="opacity:.85"></div>
     </div>
+    <div class="card meet hidden" id="meet"></div>
     <div class="card" id="members"></div>
     <div class="card">
       <h2>목적지 변경 요청</h2>
@@ -148,7 +153,7 @@
   $('name').value = store.get('argo.name') || '';
 
   let client = null, code = null;
-  let meta = null, request = null;
+  let meta = null, request = null, meet = null, spotId = null;
   const members = {};
   let me = null, myColor = 0, watchId = null, lastPos = null, arrivedAt = null, arrivedFor = null;
   let chosen = null;
@@ -256,6 +261,7 @@
           meta = json;
           if (!meta && found) { alert('리더가 크루를 종료했어요.'); leave(true); return; }
         } else if (k === 'req') { request = json; }
+        else if (k === 'meet') { meet = json; }
         else if (k.startsWith('m/')) { const id = k.slice(2); if (json) members[id] = json; else delete members[id]; }
         if (found) render();
       },
@@ -341,7 +347,19 @@
     setLayer('dest', dest ? [dest.lat, dest.lon] : null, dest ? pinHtml('목적지', dest.name, 'var(--primary)') : '');
     const wps = list.filter((m) => m.wp).map((m) => m.wp);
     Object.keys(layers).filter((k) => k.startsWith('wp:')).forEach((k) => setLayer(k, null));
-    wps.forEach((w, i) => setLayer('wp:' + i, [w.lat, w.lon], pinHtml('경유', w.name, '#0b87a6')));
+    wps.forEach((w, i) => setLayer('wp:' + i, [w.lat, w.lon], pinHtml('경유', w.name, '#0b87a6'), 400));
+    // 모이기 좋은 휴게소 (리더 차량이 계산해 공유)
+    const spots = (dest && meet?.spots) || [];
+    const spot = spots.find((p) => p.id === spotId) || spots[0];
+    Object.keys(layers).filter((k) => k.startsWith('spot:')).forEach((k) => setLayer(k, null));
+    spots.forEach((p, i) => {
+      if (wps.some((w) => same(w, p.place))) return;
+      const sel = p === spot;
+      setLayer('spot:' + i, [p.place.lat, p.place.lon], pinHtml(sel ? '모이기' : '후보', p.place.name, sel ? 'var(--ok)' : '#7a8496'), sel ? 300 : 100);
+      layers['spot:' + i].off('click').on('click', () => { spotId = p.id; render(); });
+    });
+    renderMeet(spot, spots.length, list);
+
     const pending = request && request.status === 'PENDING' ? request.place : null;
     setLayer('req', pending ? [pending.lat, pending.lon] : null, pending ? pinHtml('변경 요청', pending.name, '#c98a00') : '');
     setLayer('pick', chosen ? [chosen.lat, chosen.lon] : null, chosen ? pinHtml('선택', chosen.name, '#0b87a6') : '');
@@ -378,6 +396,23 @@
     $('reqBtn').disabled = !chosen || busy;
     $('reqBtn').textContent = busy ? '대기 중인 요청이 있어요' : '리더에게 요청 보내기';
   }
+  function renderMeet(spot, count, list) {
+    const el = $('meet');
+    if (!spot) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const names = Object.fromEntries(list.map((m) => [m.id, m.id === myId ? '나' : m.name]));
+    const eta = Object.entries(spot.eta || {}).sort((a, b) => a[1] - b[1]).map(([id, s]) => `${esc(names[id] || '크루원')} ${dur(s)}`).join(' · ');
+    const vals = Object.values(spot.eta || {}), wait = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
+    const joined = list.filter((m) => m.wp && same(m.wp, spot.place)).map((m) => esc(m.id === myId ? '나' : m.name));
+    el.innerHTML = `<div class="label"><span>모이기 좋은 휴게소</span>${count > 1 ? '<a id="nextSpot">다른 곳 보기</a>' : ''}</div>
+      <div class="name">${esc(spot.place.name)}</div>
+      <div>${eta}</div>
+      <div class="muted">${wait < 120 ? '거의 같이 도착' : '먼저 온 차 최대 ' + dur(wait) + ' 대기'} · ${spot.detourS < 120 ? '가는 길 그대로' : dur(spot.detourS) + ' 더 걸림'}</div>
+      <div class="muted" style="margin-top:6px">${joined.length ? joined.join(', ') + ' 경유지에 넣음' : '차량에서 ‘여기서 모이기’를 누르면 크루 모두에게 알려요'}</div>`;
+    const next = $('nextSpot');
+    if (next) next.onclick = () => { const s = meet.spots; spotId = s[(s.indexOf(spot) + 1) % s.length].id; render(); };
+  }
+
   function banner(kind, text) { $('banner').innerHTML = `<div class="banner ${kind}">${esc(text)}</div>`; }
 
   // ---------- 검색 · 요청 ----------
