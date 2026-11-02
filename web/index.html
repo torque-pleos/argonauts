@@ -129,10 +129,11 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 (() => {
-  const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+  // 크루 동기화 (Supabase). publishable 키는 클라이언트 공개용 키다.
+  const SB_URL = 'https://qhjlapaudkpxboonbwts.supabase.co';
+  const SB_KEY = 'sb_publishable_zPnglC0fTKkOqxTpWt7xtg_mv9xpEwh';
   const COLORS = ['#2563EB', '#16A34A', '#E2581B', '#8B3FE0', '#D13A35', '#C98A00'];
   const $ = (id) => document.getElementById(id);
   const store = {
@@ -146,7 +147,7 @@
   $('code').value = (params.get('c') || store.get('argo.code') || '').toUpperCase();
   $('name').value = store.get('argo.name') || '';
 
-  let client = null, code = null, prefix = '';
+  let client = null, code = null;
   let meta = null, request = null;
   const members = {};
   let me = null, myColor = 0, watchId = null, lastPos = null, arrivedAt = null, arrivedFor = null;
@@ -177,25 +178,87 @@
   };
   function showJoinErr(t) { $('joinErr').textContent = t; $('joinErr').classList.remove('hidden'); }
 
+  // 크루 동기화 (Supabase 테이블 crew_kv + Realtime). 구독 확인 → 현재 값 불러오기 → ready.
+  // 값 삭제는 v = null. 쓰기는 키별 최신값만 REST upsert.
+  function crewSocket(c, handlers) {
+    let ws = null, closed = false, retry = 1000, ready = false, hb = null, ref = 0, draining = false;
+    const pending = new Map();
+    const H = { apikey: SB_KEY, 'content-type': 'application/json' };
+    const emit = (k, v) => handlers.value(k, v == null ? '' : JSON.stringify(v));
+    async function upsert(k, v) {
+      const r = await fetch(`${SB_URL}/rest/v1/crew_kv?on_conflict=code,k`, {
+        method: 'POST', keepalive: true, headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ code: c, k, v: v ? JSON.parse(v) : null }),
+      });
+      if (!r.ok) throw new Error('upsert ' + r.status);
+    }
+    async function drain() {
+      if (draining || !ready) return;
+      draining = true;
+      try {
+        while (pending.size) {
+          const [k, v] = pending.entries().next().value; pending.delete(k);
+          try { await upsert(k, v); } catch { if (!pending.has(k)) pending.set(k, v); setTimeout(drain, 3000); break; }
+        }
+      } finally { draining = false; }
+    }
+    async function snapshot(sock) {
+      try {
+        const rows = await fetch(`${SB_URL}/rest/v1/crew_kv?code=eq.${c}&select=k,v`, { headers: H }).then((r) => { if (!r.ok) throw 0; return r.json(); });
+        if (sock !== ws) return;
+        rows.forEach((r) => emit(r.k, r.v));
+        ready = true; retry = 1000; handlers.open(); handlers.ready(); drain();
+      } catch { sock.close(); }
+    }
+    function open() {
+      const sock = ws = new WebSocket(`${SB_URL.replace('https://', 'wss://')}/realtime/v1/websocket?apikey=${SB_KEY}&vsn=1.0.0`);
+      sock.onopen = () => {
+        sock.send(JSON.stringify({ topic: 'realtime:crew:' + c, event: 'phx_join', ref: String(++ref),
+          payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'crew_kv', filter: 'code=eq.' + c }] } } }));
+        clearInterval(hb);
+        hb = setInterval(() => sock.readyState === 1 && sock.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) })), 25000);
+      };
+      sock.onmessage = (e) => {
+        let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.event === 'system' && m.payload?.extension === 'postgres_changes') { if (m.payload.status === 'ok') snapshot(sock); else sock.close(); }
+        else if (m.event === 'postgres_changes') { const r = m.payload?.data?.record; if (r && r.code === c) emit(r.k, r.v); }
+        else if (m.event === 'phx_error' || m.event === 'phx_close') sock.close();
+      };
+      sock.onclose = () => {
+        if (sock !== ws) return;
+        ready = false; clearInterval(hb); handlers.close();
+        if (!closed) { setTimeout(open, retry); retry = Math.min(retry * 2, 15000); }
+      };
+    }
+    open();
+    return {
+      publish(k, v) { pending.set(k, v || null); drain(); },
+      end() { closed = true; clearInterval(hb); try { ws.close(1000, 'leave'); } catch {} },
+    };
+  }
+
   function connect(c, name) {
-    code = c; prefix = `argonauts/v1/${c}/`;
-    client = mqtt.connect(BROKER, { clientId: 'argo-web-' + myId + '-' + Date.now() % 100000, reconnectPeriod: 3000, connectTimeout: 10000 });
+    code = c;
     let found = false;
-    const timer = setTimeout(() => {
-      if (!found) { showJoinErr('크루를 찾을 수 없어요. 코드를 확인해 주세요.'); $('joinBtn').disabled = false; $('joinBtn').textContent = '참여하기'; client.end(true); client = null; }
-    }, 8000);
-    client.on('connect', () => { $('conn').classList.add('on'); client.subscribe(prefix + '#', { qos: 1 }); });
-    client.on('close', () => $('conn').classList.remove('on'));
-    client.on('message', (topic, payload) => {
-      const sub = topic.slice(prefix.length); const txt = payload.toString();
-      let json = null; try { json = txt ? JSON.parse(txt) : null; } catch {}
-      if (sub === 'meta') {
-        meta = json;
-        if (meta && !meta.closedAt && !found) { found = true; clearTimeout(timer); enter(name); }
-        if (!meta && found) { alert('리더가 크루를 종료했어요.'); leave(true); return; }
-      } else if (sub === 'req') { request = json; }
-      else if (sub.startsWith('m/')) { const id = sub.slice(2); if (json) members[id] = json; else delete members[id]; }
-      if (found) render();
+    const notFound = () => { showJoinErr('크루를 찾을 수 없어요. 코드를 확인해 주세요.'); $('joinBtn').disabled = false; $('joinBtn').textContent = '참여하기'; client?.end(); client = null; };
+    const timer = setTimeout(() => { if (!found) notFound(); }, 8000);
+    client = crewSocket(c, {
+      open: () => $('conn').classList.add('on'),
+      close: () => $('conn').classList.remove('on'),
+      ready: () => {
+        if (found) return;
+        if (meta && !meta.closedAt) { found = true; clearTimeout(timer); enter(name); render(); }
+        else { clearTimeout(timer); notFound(); }
+      },
+      value: (k, txt) => {
+        let json = null; try { json = txt ? JSON.parse(txt) : null; } catch {}
+        if (k === 'meta') {
+          meta = json;
+          if (!meta && found) { alert('리더가 크루를 종료했어요.'); leave(true); return; }
+        } else if (k === 'req') { request = json; }
+        else if (k.startsWith('m/')) { const id = k.slice(2); if (json) members[id] = json; else delete members[id]; }
+        if (found) render();
+      },
     });
   }
 
@@ -236,7 +299,7 @@
       if (arrivedAt) { m.status = 'ARRIVED'; m.arrivedAt = arrivedAt; }
     }
     if (!m.at) delete m.at;
-    client.publish(prefix + 'm/' + myId, JSON.stringify(m), { qos: 1, retain: true });
+    client.publish('m/' + myId, JSON.stringify(m));
   }
 
   // ---------- 지도 ----------
@@ -344,7 +407,7 @@
   $('reqBtn').onclick = () => {
     if (!chosen || !client) return;
     request = { id: Math.random().toString(36).slice(2, 10), fromId: myId, fromName: me.name, place: chosen, status: 'PENDING', createdAt: Date.now() };
-    client.publish(prefix + 'req', JSON.stringify(request), { qos: 1, retain: true });
+    client.publish('req', JSON.stringify(request));
     chosen = null; $('results').innerHTML = ''; $('q').value = '';
     render();
   };
@@ -352,10 +415,10 @@
   // ---------- 나가기 ----------
   function leave(silent) {
     if (watchId != null) navigator.geolocation.clearWatch(watchId);
-    if (client) { client.publish(prefix + 'm/' + myId, '', { qos: 1, retain: true }, () => client.end()); }
+    if (client) { client.publish('m/' + myId, ''); setTimeout(() => client.end(), 300); }
     store.set('argo.code', '');
     if (!silent) alert('크루에서 나왔어요. 위치 공유가 멈췄어요.');
-    location.href = location.pathname;
+    setTimeout(() => { location.href = location.pathname; }, 400);
   }
   $('leaveBtn').onclick = () => { if (confirm('크루에서 나갈까요? 내 위치 공유가 바로 멈춰요.')) leave(false); };
 

@@ -16,6 +16,9 @@ android {
         versionName = "1.0.0"
         // 친구용 휴대폰 웹 주소 (QR·초대 링크)
         buildConfigField("String", "WEB_URL", "\"https://argonauts-crew.vercel.app\"")
+        // 크루 동기화 (Supabase). publishable 키는 클라이언트 공개용 키다 (쓰기 범위는 RLS·제약으로 제한).
+        buildConfigField("String", "SUPABASE_URL", "\"https://qhjlapaudkpxboonbwts.supabase.co\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"sb_publishable_zPnglC0fTKkOqxTpWt7xtg_mv9xpEwh\"")
     }
 
     buildTypes {
@@ -57,8 +60,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
-    // 크루 실시간 동기화 (MQTT), 지도, QR
-    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+    // 크루 실시간 동기화 (Supabase REST + Realtime WebSocket), 지도, QR
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("com.google.zxing:core:3.5.3")
 
