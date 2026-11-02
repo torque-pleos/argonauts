@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zigae.argonauts.core.Fmt
+import com.zigae.argonauts.core.MeetSpot
 import com.zigae.argonauts.core.Member
 import com.zigae.argonauts.core.MemberKind
 import com.zigae.argonauts.core.MemberStatus
@@ -62,6 +63,9 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
     var showQr by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
+    var spotId by remember { mutableStateOf<String?>(null) }
+    val spots = ui.meet?.spots.orEmpty()
+    val spot = spots.firstOrNull { it.id == spotId } ?: spots.firstOrNull()
 
     // 주행이 시작되면 입력·상세 화면을 닫는다 (주행 중에는 단일 탭 카드만)
     LaunchedEffect(ui.driving) {
@@ -74,7 +78,8 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
     Row(Modifier.fillMaxSize().background(c.bg)) {
         Box(Modifier.weight(1f).fillMaxHeight().padding(16.dp).clip(RoundedCornerShape(24.dp))) {
             CrewMap(
-                model = MapModel(ui.all, ui.me?.id ?: "", ui.destination, waypoints, pendingPlace, picked, ui.driving, c.night, fit, focusId),
+                model = MapModel(ui.all, ui.me?.id ?: "", ui.destination, waypoints, pendingPlace, picked, ui.driving, c.night, fit, focusId,
+                    spots = spots.map { it.place }, spotIndex = spots.indexOf(spot)),
                 colors = c,
                 onLongPress = { at -> if (!ui.driving) picked = Place("지도에서 고른 위치", at) },
                 onMarkerTap = { id ->
@@ -82,6 +87,7 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
                     if (!ui.driving) detail = ui.all.firstOrNull { it.id == id && it.id != ui.me?.id }
                 },
                 modifier = Modifier.fillMaxSize(),
+                onSpotTap = { i -> spotId = spots.getOrNull(i)?.id },
             )
             MapHeader(ui, Modifier.align(Alignment.TopStart).padding(16.dp))
             val preview by engine.drivingPreview.collectAsState()
@@ -112,7 +118,8 @@ fun CrewScreen(engine: CrewEngine, ui: CrewUi) {
             }
         }
         SidePanel(
-            engine, ui,
+            engine, ui, spot, spots.size,
+            onNextSpot = { spotId = spots[(spots.indexOf(spot) + 1) % spots.size].id },
             onQr = { showQr = true },
             onPicker = { showPicker = true },
             onSettings = { showSettings = true },
@@ -185,6 +192,9 @@ private fun PickedCard(p: Place, isLeader: Boolean, onConfirm: () -> Unit, onCan
 private fun SidePanel(
     engine: CrewEngine,
     ui: CrewUi,
+    spot: MeetSpot?,
+    spotCount: Int,
+    onNextSpot: () -> Unit,
     onQr: () -> Unit,
     onPicker: () -> Unit,
     onSettings: () -> Unit,
@@ -210,8 +220,10 @@ private fun SidePanel(
 
         DestinationCard(ui, onPicker)
 
+        spot?.let { MeetCard(engine, ui, it, spotCount, onNextSpot) }
+
         // 한 번 탭 카드
-        ui.prompts.take(3).forEach { p -> PromptCard(engine, p) }
+        ui.prompts.take(if (spot != null) 2 else 3).forEach { p -> PromptCard(engine, p) }
 
         // 크루 리스트
         Panel(Modifier.fillMaxWidth().weight(1f), padding = 12.dp) {
@@ -265,6 +277,36 @@ private fun DestinationCard(ui: CrewUi, onPicker: () -> Unit) {
     }
 }
 
+/** 모이기 좋은 휴게소: 누가 몇 분 뒤 도착하는지, 먼저 온 사람이 얼마나 기다리는지. */
+@Composable
+private fun MeetCard(engine: CrewEngine, ui: CrewUi, spot: MeetSpot, count: Int, onNext: () -> Unit) {
+    val c = Argo.c
+    val names = ui.all.associate { it.id to if (it.id == ui.me?.id) "나" else it.name }
+    val joined = ui.me?.waypoint?.sameAs(spot.place) == true
+    Panel(Modifier.fillMaxWidth(), padding = 16.dp, color = c.successContainer, border = c.success) {
+        RowCentered(gap = 10.dp) {
+            Text("모이기 좋은 휴게소", style = T.label, color = c.success, modifier = Modifier.weight(1f))
+            if (count > 1 && !ui.driving) Text("다른 곳 보기", style = T.label, color = c.primary,
+                modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onNext).padding(horizontal = 10.dp, vertical = 4.dp))
+        }
+        Text(spot.place.name, style = T.head, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            spot.etaS.entries.sortedBy { it.value }.joinToString(" · ") { (id, s) -> "${names[id] ?: "크루원"} ${Fmt.duration(s)}" },
+            style = T.body, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            listOf(
+                if (spot.waitS < 120) "거의 같이 도착" else "먼저 온 차 최대 ${Fmt.duration(spot.waitS)} 대기",
+                if (spot.detourS < 120) "가는 길 그대로" else "${Fmt.duration(spot.detourS)} 더 걸림",
+            ).joinToString(" · "),
+            style = T.small, color = c.textSub, maxLines = 1,
+        )
+        Spacer(Modifier.height(10.dp))
+        if (joined) Chip("내 경유지에 넣었어요 · 크루에 알렸어요", c.surface, c.success)
+        else BigButton("여기서 모이기", { engine.meetAt(spot) }, Modifier.fillMaxWidth(), container = c.success, content = c.onPrimary)
+    }
+}
+
 @Composable
 private fun PromptCard(engine: CrewEngine, p: Prompt) {
     val c = Argo.c
@@ -302,7 +344,7 @@ private fun PromptCard(engine: CrewEngine, p: Prompt) {
 private fun promptText(p: Prompt): Pair<String, String?> = when (p) {
     is Prompt.FollowDestination ->
         (if (p.changed) "크루 목적지가 ${p.place.name}(으)로 바뀌었어요" else "크루 목적지 ${p.place.name}(으)로 안내할까요?") to p.place.address
-    is Prompt.JoinWaypoint -> "${p.member.name}님이 ${p.place.name}에 들러요" to (p.member.waypointRemainS?.let { "${Fmt.duration(it)} 뒤 도착 예정" })
+    is Prompt.JoinWaypoint -> (if (p.meet) "${p.member.name}님이 ${p.place.name}에서 모여요" else "${p.member.name}님이 ${p.place.name}에 들러요") to (p.member.waypointRemainS?.let { "${Fmt.duration(it)} 뒤 도착 예정" })
     is Prompt.ApproveRequest -> "${p.request.fromName}님이 목적지를 ${p.request.place.name}(으)로 바꾸자고 해요" to "${Fmt.clock(p.request.expiresAt)}까지 응답이 없으면 만료돼요"
     is Prompt.MyRequest -> when (p.request.status) {
         RequestStatus.PENDING -> "${p.request.place.name} 변경 요청을 보냈어요" to "리더의 응답을 기다리는 중"

@@ -41,6 +41,9 @@ data class MapModel(
     val night: Boolean,
     val fitRequest: Int,
     val focusId: String?,
+    /** 모이기 좋은 휴게소 (좋은 순)와 선택한 곳. */
+    val spots: List<Place> = emptyList(),
+    val spotIndex: Int = 0,
 )
 
 /** OSM 표준 타일 (osmdroid 기본, 앱 식별 User-Agent 필수). 주간은 채도를 낮춰 간결하게, 야간은 반전. */
@@ -77,6 +80,7 @@ fun CrewMap(
     onLongPress: (LatLon) -> Unit,
     onMarkerTap: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onSpotTap: (Int) -> Unit = {},
 ) {
     val holder = remember { arrayOfNulls<MapHolder>(1) }
     AndroidView(
@@ -103,13 +107,13 @@ fun CrewMap(
         },
         update = { view ->
             val h = holder[0] ?: return@AndroidView
-            render(h, model, colors, view.context, onMarkerTap)
+            render(h, model, colors, view.context, onMarkerTap, onSpotTap)
         },
     )
 }
 
 @SuppressLint("ClickableViewAccessibility")
-private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, onMarkerTap: (String) -> Unit) {
+private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, onMarkerTap: (String) -> Unit, onSpotTap: (Int) -> Unit) {
     val map = h.view
     if (h.night != m.night) {
         map.setTileSource(TileSourceFactory.MAPNIK)
@@ -139,6 +143,13 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
         wanted["wp:$i"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, colors.crewColor(c).toArgb(), 0xFFFFFFFF.toInt(), "경유", m.night) }
         h.iconKeys["wp:$i#want"] = "${p.name}|$c|${m.night}"
     }
+    m.spots.forEachIndexed { i, p ->
+        if (m.waypoints.any { it.first.sameAs(p) }) return@forEachIndexed // 이미 경유지 핀으로 표시
+        val sel = i == m.spotIndex
+        val color = if (sel) colors.success.toArgb() else 0xFF7A8496.toInt()
+        wanted["spot:$i"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, color, 0xFFFFFFFF.toInt(), if (sel) "모이기" else "후보", m.night) }
+        h.iconKeys["spot:$i#want"] = "${p.name}|$sel|${m.night}"
+    }
     m.pendingPlace?.let { p ->
         wanted["req"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, colors.warn.toArgb(), 0xFFFFFFFF.toInt(), "변경 요청", m.night) }
         h.iconKeys["req#want"] = "${p.name}|${m.night}"
@@ -159,10 +170,11 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
             Marker(map).apply {
                 setAnchor(Marker.ANCHOR_CENTER, if (k.startsWith("m:")) 0.32f else 1.0f)
                 setInfoWindow(null)
-                if (k.startsWith("m:")) {
-                    val id = k.removePrefix("m:")
-                    setOnMarkerClickListener { _, _ -> onMarkerTap(id); true }
-                } else setOnMarkerClickListener { _, _ -> true }
+                when {
+                    k.startsWith("m:") -> k.removePrefix("m:").let { id -> setOnMarkerClickListener { _, _ -> onMarkerTap(id); true } }
+                    k.startsWith("spot:") -> k.removePrefix("spot:").toInt().let { i -> setOnMarkerClickListener { _, _ -> onSpotTap(i); true } }
+                    else -> setOnMarkerClickListener { _, _ -> true }
+                }
                 map.overlays.add(this)
             }
         }
@@ -173,7 +185,8 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
             h.iconKeys[k] = want ?: ""
         }
     }
-    // 내 마커·크루원이 목적지 핀 위에 오도록 순서 정리
+    // 선택한 휴게소 핀은 다른 핀 위에, 내 마커·크루원은 모든 핀 위에 오도록 순서 정리
+    h.markers["spot:${m.spotIndex}"]?.let { map.overlays.remove(it); map.overlays.add(it) }
     h.markers.filterKeys { it.startsWith("m:") }.values.forEach { map.overlays.remove(it); map.overlays.add(it) }
     h.markers["m:${m.myId}"]?.let { map.overlays.remove(it); map.overlays.add(it) }
 
