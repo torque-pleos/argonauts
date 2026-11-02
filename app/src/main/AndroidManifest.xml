@@ -42,6 +42,11 @@
             </intent-filter>
         </activity>
 
+        <!-- 상단 팝업 알림의 버튼(같이 들르기·안내 시작·수락/거절) -->
+        <receiver
+            android:name=".service.CrewNotifier$ActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".service.CrewService"
             android:exported="false"
