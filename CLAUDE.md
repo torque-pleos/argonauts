@@ -41,7 +41,7 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | `net/Web.kt` | OSRM 경로, Photon 장소 검색 |
 | `service/CrewService.kt` | `specialUse` 포그라운드 서비스 (크루에 있는 동안) |
 | `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
-| `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `supabase link --project-ref qhjlapaudkpxboonbwts` 후 `supabase db push` |
+| `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `set -a; . ./.env; set +a; supabase db push` (DB 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD`, 커밋 금지) |
 | `web/index.html` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
 | `docs/probe/` | 구현 전 NaviHelper 검증 앱 코드(참고용, 빌드 제외) |
 
