@@ -25,8 +25,21 @@ private suspend fun getJson(url: String): JSONObject? = withContext(Dispatchers.
 
 data class RouteLine(val points: List<LatLon>, val distanceM: Double, val durationS: Double)
 
-/** 시연용 크루원 이동 경로 (OSRM 공개 서버). 실패하면 직선. */
+/** 경로·소요 시간 (OSRM 공개 서버). 시연 차량 이동, 모이기 좋은 휴게소 계산에 쓴다. */
 object Routing {
+    /** 소요 시간 행렬(초) [출발][도착]. 경로가 없으면 NaN, 요청 실패 시 null. */
+    suspend fun table(from: List<LatLon>, to: List<LatLon>): List<DoubleArray>? {
+        val coords = (from + to).joinToString(";") { "${it.lon},${it.lat}" }
+        val src = from.indices.joinToString(";")
+        val dst = to.indices.joinToString(";") { (it + from.size).toString() }
+        val json = getJson("https://router.project-osrm.org/table/v1/driving/$coords?sources=$src&destinations=$dst&annotations=duration") ?: return null
+        val rows = json.optJSONArray("durations") ?: return null
+        return (0 until rows.length()).map { i ->
+            val r = rows.getJSONArray(i)
+            DoubleArray(r.length()) { j -> if (r.isNull(j)) Double.NaN else r.getDouble(j) }
+        }
+    }
+
     suspend fun route(stops: List<LatLon>): RouteLine {
         val coords = stops.joinToString(";") { "${it.lon},${it.lat}" }
         val json = getJson("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson")

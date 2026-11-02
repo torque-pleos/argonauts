@@ -4,6 +4,7 @@ import android.util.Log
 import com.zigae.argonauts.BuildConfig
 import com.zigae.argonauts.core.CrewMeta
 import com.zigae.argonauts.core.DestRequest
+import com.zigae.argonauts.core.MeetPlan
 import com.zigae.argonauts.core.Member
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - `meta`     크루 정보(리더·목적지)
  * - `m/{id}`   크루원 상태(위치·목적지·남은 시간·경유지)
  * - `req`      목적지 변경 요청(크루당 1건)
+ * - `meet`     모이기 좋은 휴게소 추천(리더가 계산)
  * 삭제는 `v = null`로 갱신한다.
  *
  * 순서: Realtime 구독 → 구독 확인 → REST로 현재 값 불러오기 → 준비 완료(`metaLoaded`).
@@ -48,6 +50,9 @@ class CrewSync(@Suppress("unused") private val clientTag: String) {
 
     private val _request = MutableStateFlow<DestRequest?>(null)
     val request: StateFlow<DestRequest?> = _request.asStateFlow()
+
+    private val _meet = MutableStateFlow<MeetPlan?>(null)
+    val meet: StateFlow<MeetPlan?> = _meet.asStateFlow()
 
     /** 현재 값을 다 불러왔는지 (크루 존재 확인용). */
     private val _metaLoaded = MutableStateFlow(false)
@@ -69,7 +74,7 @@ class CrewSync(@Suppress("unused") private val clientTag: String) {
         if (code == crewCode && ws != null) return
         leave()
         code = crewCode
-        _members.value = emptyMap(); _meta.value = null; _request.value = null; _metaLoaded.value = false
+        _members.value = emptyMap(); _meta.value = null; _request.value = null; _meet.value = null; _metaLoaded.value = false
         connect(crewCode)
     }
 
@@ -171,6 +176,14 @@ class CrewSync(@Suppress("unused") private val clientTag: String) {
         publish("req", r.toJson().toString())
     }
     fun clearRequest() = publish("req", null)
+    fun publishMeet(plan: MeetPlan) {
+        _meet.value = plan
+        publish("meet", plan.toJson().toString())
+    }
+    fun clearMeet() {
+        _meet.value = null
+        publish("meet", null)
+    }
 
     private fun publish(key: String, json: String?) {
         pending[key] = Opt(json)
@@ -222,6 +235,7 @@ class CrewSync(@Suppress("unused") private val clientTag: String) {
         when {
             key == "meta" -> _meta.value = json?.let(CrewMeta::from)
             key == "req" -> _request.value = json?.let(DestRequest::from)
+            key == "meet" -> _meet.value = json?.let(MeetPlan::from)
             key.startsWith("m/") -> {
                 val id = key.removePrefix("m/")
                 val m = json?.let(Member::from)

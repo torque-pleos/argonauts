@@ -40,7 +40,7 @@ enum class MemberStatus(val label: String) {
     }
 }
 
-/** 크루원 한 명의 실시간 상태. MQTT retained 토픽 `.../m/{id}` 에 그대로 실린다. */
+/** 크루원 한 명의 실시간 상태. 동기화 키 `m/{id}`. */
 data class Member(
     val id: String,
     val name: String,
@@ -58,6 +58,8 @@ data class Member(
     val arrivedAt: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
     val simulated: Boolean = false,
+    /** 추천 휴게소(id)까지 내 내비가 계산한 소요 시간(초). 교통 반영 실제 값. */
+    val meetEta: Map<String, Int> = emptyMap(),
 ) {
     val initial: String get() = name.trim().take(1).ifBlank { "?" }
 
@@ -75,6 +77,7 @@ data class Member(
         waypointRemainS?.let { put("wpRemainS", it) }
         arrivedAt?.let { put("arrivedAt", it) }
         put("updatedAt", updatedAt); put("sim", simulated)
+        if (meetEta.isNotEmpty()) put("meetEta", JSONObject().apply { meetEta.forEach { (k, v) -> put(k, v) } })
     }
 
     companion object {
@@ -95,12 +98,13 @@ data class Member(
                 arrivedAt = if (o.has("arrivedAt")) o.getLong("arrivedAt") else null,
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 simulated = o.optBoolean("sim", false),
+                meetEta = o.optJSONObject("meetEta")?.let { e -> e.keys().asSequence().associateWith { e.getInt(it) } }.orEmpty(),
             )
         }.getOrNull()
     }
 }
 
-/** 크루 공통 정보. 리더만 쓴다. retained 토픽 `.../meta`. */
+/** 크루 공통 정보. 리더만 쓴다. 동기화 키 `meta`. */
 data class CrewMeta(
     val code: String,
     val name: String,
@@ -133,7 +137,7 @@ data class CrewMeta(
 
 enum class RequestStatus { PENDING, ACCEPTED, DECLINED, EXPIRED }
 
-/** 목적지 변경 요청. 크루당 동시에 1건만. retained 토픽 `.../req`. */
+/** 목적지 변경 요청. 크루당 동시에 1건만. 동기화 키 `req`. */
 data class DestRequest(
     val id: String,
     val fromId: String,
@@ -173,7 +177,7 @@ sealed class Prompt(val key: String) {
     data class FollowDestination(val place: Place, val changed: Boolean) : Prompt("follow:${place.name}:${place.at.lat}")
 
     /** 다른 크루원이 경유지를 추가했을 때. */
-    data class JoinWaypoint(val member: Member, val place: Place) : Prompt("wp:${member.id}:${place.name}")
+    data class JoinWaypoint(val member: Member, val place: Place, val meet: Boolean = false) : Prompt("wp:${member.id}:${place.name}")
 
     /** (리더) 목적지 변경 요청 승인. */
     data class ApproveRequest(val request: DestRequest) : Prompt("req:${request.id}")

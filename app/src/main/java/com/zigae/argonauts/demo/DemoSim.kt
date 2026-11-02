@@ -114,7 +114,7 @@ class DemoSim(private val scope: CoroutineScope) {
 
     private val friends = listOf(
         Friend("sim-minsu", "민수", 1, LatLon(37.3948, 127.1112), pace = 0.97), // 판교역 인근
-        Friend("sim-jiyoung", "지영", 2, LatLon(37.4020, 127.1086), pace = 1.04),
+        Friend("sim-jiyoung", "지영", 2, LatLon(37.5133, 127.1001), pace = 1.04), // 잠실 (다른 곳에서 출발 → 중간에 모이기)
     )
     private var self: SimCar? = null
     private var selfKey: String? = null
@@ -215,6 +215,17 @@ class DemoSim(private val scope: CoroutineScope) {
         f.car.setRoute(Routing.route(listOf(f.car.position, stop.at, dest.at)), stop.at)
         Log.i(TAG, "jiyoung waypoint ${stop.name}")
         stop
+    }
+
+    /** 시연: 가상 크루원도 모임 휴게소를 경유지로 넣는다 ('같이 들르기'를 누른 것처럼). */
+    suspend fun friendsJoin(stop: Place) = lock.withLock {
+        friends.forEach { f ->
+            val dest = f.dest ?: return@forEach
+            if (f.arrivedAt != null || f.waypoint?.sameAs(stop) == true) return@forEach
+            f.waypoint = stop
+            f.car.setRoute(Routing.route(listOf(f.car.position, stop.at, dest.at)), stop.at)
+        }
+        Log.i(TAG, "friends join ${stop.name}")
     }
 
     /** 스크립트: 민수가 목적지 근처 다른 장소로 변경을 제안할 장소를 찾는다. */

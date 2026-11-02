@@ -7,6 +7,8 @@ import com.zigae.argonauts.core.CrewMeta
 import com.zigae.argonauts.core.DestRequest
 import com.zigae.argonauts.core.Geo
 import com.zigae.argonauts.core.LatLon
+import com.zigae.argonauts.core.MeetPlan
+import com.zigae.argonauts.core.MeetSpot
 import com.zigae.argonauts.core.Member
 import com.zigae.argonauts.core.MemberKind
 import com.zigae.argonauts.core.MemberStatus
@@ -56,13 +58,15 @@ data class CrewUi(
     val connected: Boolean,
     val isLeader: Boolean,
     val completed: Boolean,
+    /** 모이기 좋은 휴게소 (좋은 순). */
+    val meet: MeetPlan? = null,
 ) {
     val all: List<Member> get() = listOfNotNull(me) + others
     val destination: Place? get() = meta?.destination
 }
 
 /**
- * 크루 상태 기계. 내비(NaviHelper)·기어(Vehicle)·동기화(MQTT)·시연 시뮬레이션을 묶어
+ * 크루 상태 기계. 내비(NaviHelper)·기어(Vehicle)·동기화(Supabase)·시연 시뮬레이션을 묶어
  * 내 상태를 2초마다 공유하고, 크루 상태로부터 한 번 탭 카드(Prompt)를 만든다.
  */
 class CrewEngine(private val context: Context) {
@@ -72,6 +76,9 @@ class CrewEngine(private val context: Context) {
     val navi = NaviMonitor(context, scope)
     val gear = GearMonitor(context, scope)
     private val demo = DemoSim(scope)
+    private val meetFinder = MeetFinder(context)
+    /** 추천 휴게소까지 내 내비 소요 시간 (휴게소 id → 초). */
+    @Volatile private var myMeetEta: Map<String, Int> = emptyMap()
 
     private val _profile = MutableStateFlow(loadProfile())
     val profile: StateFlow<Profile> = _profile.asStateFlow()
@@ -102,6 +109,7 @@ class CrewEngine(private val context: Context) {
     private var loopJob: Job? = null
     private var uiJob: Job? = null
     private var eventJob: Job? = null
+    private var meetJob: Job? = null
 
     /** 내 도착 상태 (목적지가 바뀌면 해제). */
     private var arrivedAt: Long? = null
@@ -217,12 +225,13 @@ class CrewEngine(private val context: Context) {
                 demo.friendIds().forEach(s::clearMember)
                 ui.others.forEach { s.clearMember(it.id) }
                 s.clearRequest()
+                s.clearMeet()
                 s.clearMeta()
             }
             scope.launch { delay(1_500); s.leave() }
         }
         demo.stop()
-        loopJob?.cancel(); uiJob?.cancel(); eventJob?.cancel()
+        loopJob?.cancel(); uiJob?.cancel(); eventJob?.cancel(); meetJob?.cancel()
         sync = null
         _code.value = null
         _ui.value = null
@@ -241,7 +250,7 @@ class CrewEngine(private val context: Context) {
 
     private fun startLoops() {
         val s = sync ?: return
-        loopJob?.cancel(); uiJob?.cancel(); eventJob?.cancel()
+        loopJob?.cancel(); uiJob?.cancel(); eventJob?.cancel(); meetJob?.cancel()
 
         loopJob = scope.launch {
             while (isActive) {
@@ -250,8 +259,16 @@ class CrewEngine(private val context: Context) {
             }
         }
 
+        meetJob = scope.launch {
+            delay(3_000)
+            while (isActive) {
+                runCatching { meetDuties(s) }.onFailure { Log.w(TAG, "meet failed", it) }
+                delay(MEET_MS)
+            }
+        }
+
         uiJob = scope.launch {
-            combine(s.members, s.meta, s.request, s.connected, combine(dismissed, _drivingPreview, gear.gear) { _, _, _ -> Unit }) { _, _, _, _, _ -> Unit }
+            combine(s.members, s.meta, s.request, s.connected, combine(dismissed, _drivingPreview, gear.gear, s.meet) { _, _, _, _ -> Unit }) { _, _, _, _, _ -> Unit }
                 .collect { rebuildUi(s) }
         }
 
@@ -297,7 +314,31 @@ class CrewEngine(private val context: Context) {
             waypoint = n.waypoints.firstOrNull()?.place,
             waypointRemainS = sim?.waypointRemainS ?: n.waypoints.firstOrNull()?.remainS,
             arrivedAt = arrivedAt,
+            meetEta = if (p.demo) emptyMap() else myMeetEta,
         )
+    }
+
+    /**
+     * 모이기 좋은 휴게소.
+     * - 모두: 추천된 휴게소까지 내 내비 소요 시간(교통 반영)을 계산해 공유한다 (시연 모드는 위치가 가상이라 제외).
+     * - 리더: 크루원 위치·목적지로 추천 목록을 계산해 공유한다.
+     */
+    private suspend fun meetDuties(s: CrewSync) {
+        val meta = s.meta.value ?: return
+        val p = _profile.value
+        val spots = s.meet.value?.spots.orEmpty()
+        myMeetEta = if (!p.demo && spots.isNotEmpty() && navi.state.value.location != null && arrivedAt == null) {
+            spots.mapNotNull { sp -> navi.trip(sp.place)?.let { sp.id to it.durationS } }.toMap()
+        } else emptyMap()
+        if (meta.leaderId != p.id) return
+        val dest = meta.destination
+        val all = _ui.value?.all.orEmpty()
+        val active = all.count { it.at != null && it.status != MemberStatus.ARRIVED && it.status != MemberStatus.OFFLINE }
+        if (dest == null || active < 2) {
+            if (s.meet.value != null) s.clearMeet()
+            return
+        }
+        meetFinder.plan(dest, all)?.let(s::publishMeet) // 네트워크 실패면 이전 추천 유지
     }
 
     private fun Place?.sameOrNull(other: Place?) = this != null && sameAs(other)
@@ -355,6 +396,7 @@ class CrewEngine(private val context: Context) {
             code = code, meta = meta, me = me, others = others,
             prompts = buildPrompts(meta, me, others, req, isLeader, navi.state.value).filter { it.key !in dismissed.value },
             request = req, driving = driving, connected = s.connected.value, isLeader = isLeader, completed = completed,
+            meet = s.meet.value?.takeIf { crewDest != null && me?.status != MemberStatus.ARRIVED },
         )
     }
 
@@ -371,9 +413,10 @@ class CrewEngine(private val context: Context) {
             out += Prompt.FollowDestination(crewDest, changed = myDest != null)
         }
         if (myDest != null) {
+            val spots = sync?.meet?.value?.spots.orEmpty()
             others.filter { it.status != MemberStatus.OFFLINE }.forEach { m ->
                 val wp = m.waypoint ?: return@forEach
-                if (n.waypoints.none { it.place.sameAs(wp) }) out += Prompt.JoinWaypoint(m, wp)
+                if (n.waypoints.none { it.place.sameAs(wp) }) out += Prompt.JoinWaypoint(m, wp, meet = spots.any { it.place.sameAs(wp) })
             }
         }
         return out
@@ -431,6 +474,15 @@ class CrewEngine(private val context: Context) {
         if (cur != null && cur.status == RequestStatus.PENDING && now < cur.expiresAt) return "이미 대기 중인 요청이 있어요"
         s.publishRequest(DestRequest(UUID.randomUUID().toString().take(8), me.id, me.name.ifBlank { "크루원" }, place, RequestStatus.PENDING, now))
         return "리더에게 목적지 변경을 요청했어요"
+    }
+
+    /** 추천 휴게소에서 모이기: 내 내비 경유지로 넣으면 크루원에게 '같이 들르기' 카드가 간다. */
+    fun meetAt(spot: MeetSpot) {
+        if (navi.state.value.destination == null) { _toasts.tryEmit("먼저 크루 목적지로 안내를 시작해 주세요"); return }
+        if (navi.state.value.waypoints.any { it.place.sameAs(spot.place) }) return
+        if (!navi.addWaypoint(spot.place)) { _toasts.tryEmit("경유지는 최대 2곳까지예요"); return }
+        _toasts.tryEmit("${spot.place.name}에서 모이자고 크루에 알렸어요")
+        if (_profile.value.demo) scope.launch { delay(4_000); demo.friendsJoin(spot.place) }
     }
 
     /** 만나기: 크루원의 현재 위치로 안내 (정차 중). */
@@ -495,5 +547,6 @@ class CrewEngine(private val context: Context) {
         const val PALETTE_SIZE = 6
         private const val PUBLISH_MS = 2_000L
         private const val OFFLINE_MS = 90_000L
+        private const val MEET_MS = 30_000L
     }
 }
