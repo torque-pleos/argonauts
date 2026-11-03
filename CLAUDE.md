@@ -46,7 +46,7 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | `service/CrewNotifier.kt` | 앱이 안 보일 때 새 카드·크루원 도착 → 상단 팝업 알림(채널 `crew_news`, IMPORTANCE_HIGH), 알림 버튼은 `ActionReceiver`가 엔진 동작 호출. 앱이 보이는지는 `ArgoApp`의 started 액티비티 수 |
 | `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드, 폭 900dp 미만이면 위 지도 + 아래 패널) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
 | `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `set -a; . ./.env; set +a; supabase db push` (DB 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD`, 커밋 금지) |
-| `web/index.html` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
+| `web/index.html` · `web/sw.js` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 크루 소식 알림은 `checkNews`(보이면 토스트, 숨겨지면 `sw.js`의 `showNotification` — Android Chrome은 `new Notification()` 불가). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
 | `docs/probe/` | 구현 전 NaviHelper 검증 앱 코드(참고용, 빌드 제외) |
 
 ## 에뮬레이터에서 확인한 사실
