@@ -80,6 +80,17 @@
   .mk { display:flex; flex-direction:column; align-items:center; }
   .mk .c { width:34px; height:34px; border-radius:50%; border:3px solid #fff; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.3); }
   .mk .t { margin-top:3px; background:var(--surface); color:var(--text); font-size:12px; font-weight:700; padding:1px 8px; border-radius:9px; white-space:nowrap; }
+  .toasts { position:fixed; top:0; left:0; right:0; z-index:2000; display:flex; flex-direction:column; gap:8px; align-items:center;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 0; pointer-events:none; }
+  .toast { width:100%; max-width:608px; background:var(--surface); color:var(--text); border-left:6px solid var(--accent); border-radius:14px;
+    padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.25); pointer-events:auto; cursor:pointer; animation:drop .25s ease-out; }
+  .toast b { display:block; font-size:16px; }
+  .toast span { color:var(--sub); font-size:14px; }
+  .toast.ok { border-left-color:var(--ok); }
+  .toast.bad { border-left-color:var(--bad); }
+  @keyframes drop { from { transform:translateY(-16px); opacity:0; } }
+  .notifyAsk { display:flex; align-items:center; gap:12px; }
+  .notifyAsk .btn { width:auto; margin:0; padding:0 18px; min-height:44px; flex:none; font-size:15px; }
   .hidden { display:none !important; }
   footer { color:var(--sub); font-size:12px; text-align:center; padding:16px 0 32px; }
 </style>
@@ -110,6 +121,10 @@
       <div class="code" id="crewCode"></div>
     </div>
     <div id="banner"></div>
+    <div class="card notifyAsk hidden" id="notifyAsk">
+      <div class="grow"><b>크루 소식 알림</b><div class="muted">다른 앱을 보고 있어도 경유지·목적지 변경·도착 소식을 알려드려요</div></div>
+      <button class="btn" id="notifyBtn">알림 켜기</button>
+    </div>
     <div id="map"></div>
     <div class="card dest">
       <div class="label">크루 목적지</div>
@@ -132,6 +147,7 @@
   </section>
   <footer>지도 © OpenStreetMap contributors · 검색 Photon · 공모전 시연용</footer>
 </div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -178,6 +194,7 @@
     if (c.length !== 6) return showJoinErr('6자리 크루 코드를 입력해 주세요.');
     if (!n) return showJoinErr('이름을 입력해 주세요.');
     store.set('argo.name', n);
+    askNotify();
     $('joinBtn').disabled = true; $('joinBtn').textContent = '크루 찾는 중…';
     connect(c, n);
   };
@@ -359,6 +376,7 @@
       layers['spot:' + i].off('click').on('click', () => { spotId = p.id; render(); });
     });
     renderMeet(spot, spots.length, list);
+    checkNews(list, dest, spots);
 
     const pending = request && request.status === 'PENDING' ? request.place : null;
     setLayer('req', pending ? [pending.lat, pending.lon] : null, pending ? pinHtml('변경 요청', pending.name, '#c98a00') : '');
@@ -414,6 +432,75 @@
   }
 
   function banner(kind, text) { $('banner').innerHTML = `<div class="banner ${kind}">${esc(text)}</div>`; }
+
+  // ---------- 크루 소식 알림 (차량 앱의 상단 팝업 알림과 같은 소식) ----------
+  // 화면을 보고 있으면 페이지 위 토스트, 다른 앱·탭을 보고 있으면 시스템 알림.
+  // 크루에 들어온 시점의 상태는 알리지 않고, 이후 바뀐 것만 알린다.
+  let swReg = null, news = null;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then((r) => (swReg = r)).catch(() => {});
+  const canNotify = () => 'Notification' in window && !!swReg;
+  function askNotify() {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(updateNotifyAsk).catch(() => {});
+  }
+  function updateNotifyAsk() {
+    $('notifyAsk').classList.toggle('hidden', !('Notification' in window) || Notification.permission !== 'default');
+  }
+  $('notifyBtn').onclick = askNotify;
+
+  function notify(tag, kind, title, body) {
+    const hidden = document.visibilityState === 'hidden';
+    if (hidden && canNotify() && Notification.permission === 'granted') {
+      swReg.showNotification(title, { body: body || '', tag, renotify: true, data: { url: location.href } }).catch(() => toast(kind, title, body));
+    } else toast(kind, title, body);
+  }
+  function toast(kind, title, body) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + kind;
+    el.innerHTML = `<b>${esc(title)}</b>${body ? `<span>${esc(body)}</span>` : ''}`;
+    const box = $('toasts');
+    el.onclick = () => el.remove();
+    box.prepend(el);
+    while (box.children.length > 3) box.lastChild.remove();
+    setTimeout(() => el.remove(), 10000);
+    try { navigator.vibrate?.(150); } catch {}
+  }
+
+  function checkNews(list, dest, spots) {
+    const others = list.filter((m) => m.id !== myId);
+    const now = {
+      dest: dest ? `${dest.lat.toFixed(4)},${dest.lon.toFixed(4)}` : '',
+      wps: new Set(others.filter((m) => m.wp && m.status !== 'ARRIVED' && m.status !== 'OFFLINE').map((m) => `${m.id}|${m.wp.name}`)),
+      arrived: new Set(others.filter((m) => m.status === 'ARRIVED').map((m) => m.id)),
+      req: request && request.fromId === myId ? `${request.id}|${request.status}` : '',
+    };
+    const prev = news; news = now;
+    if (!prev) { updateNotifyAsk(); return; }
+
+    // 내 변경 요청 결과
+    if (now.req && now.req !== prev.req) {
+      const n = request.place.name;
+      const t = { ACCEPTED: ['ok', `리더가 ${n}(으)로 변경을 수락했어요`, '크루 목적지가 바뀌었어요'], DECLINED: ['bad', `리더가 ${n} 변경을 거절했어요`, ''], EXPIRED: ['bad', `${n} 변경 요청이 만료됐어요`, '리더가 응답하지 않았어요'] }[request.status];
+      if (t) notify('req', t[0], t[1], t[2]);
+    }
+    // 크루 목적지 변경 (내 요청이 수락돼서 바뀐 거면 위 알림으로 충분)
+    if (dest && now.dest !== prev.dest) {
+      const mine = request && request.fromId === myId && request.status !== 'DECLINED' && same(request.place, dest);
+      if (!mine) notify('dest', 'info', prev.dest ? `크루 목적지가 ${dest.name}(으)로 바뀌었어요` : `크루 목적지가 ${dest.name}(으)로 정해졌어요`, dest.address || '');
+    }
+    // 크루원이 경유지를 넣음 (모이기 휴게소면 '모여요')
+    others.forEach((m) => {
+      const k = `${m.id}|${m.wp?.name}`;
+      if (!m.wp || !now.wps.has(k) || prev.wps.has(k)) return;
+      const meetHere = spots.some((p) => same(p.place, m.wp));
+      notify('wp:' + m.id, 'info', meetHere ? `${m.name}님이 ${m.wp.name}에서 모여요` : `${m.name}님이 ${m.wp.name}에 들러요`,
+        m.wpRemainS != null ? `${dur(m.wpRemainS)} 뒤 도착 예정` : '');
+    });
+    // 크루원 도착
+    others.forEach((m) => {
+      if (!now.arrived.has(m.id) || prev.arrived.has(m.id)) return;
+      notify('arrive:' + m.id, 'ok', `${m.name}님이 ${(m.dest || dest)?.name || '목적지'}에 도착했어요`, m.arrivedAt ? clock(m.arrivedAt) + ' 도착' : '');
+    });
+  }
 
   // ---------- 검색 · 요청 ----------
   async function search() {
