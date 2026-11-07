@@ -29,28 +29,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** 차량 화면 글자 크기 (주행 중 핵심 정보는 크게). */
+/** 차량 화면 글자 크기 (주행 중 핵심 정보는 크게). 시각·거리는 고정폭 숫자(tnum)로 줄을 맞춘다. */
 object T {
-    val display = TextStyle(fontSize = 40.sp, fontWeight = FontWeight.Bold, lineHeight = 48.sp)
-    val title = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, lineHeight = 36.sp)
-    val head = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp)
-    val body = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Normal, lineHeight = 30.sp)
-    val bodyB = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp)
+    private const val TNUM = "tnum"
+    val display = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Bold, lineHeight = 50.sp, fontFeatureSettings = TNUM, letterSpacing = (-0.5).sp)
+    val title = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, lineHeight = 38.sp, letterSpacing = (-0.3).sp)
+    val head = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp, fontFeatureSettings = TNUM)
+    val body = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Normal, lineHeight = 30.sp, fontFeatureSettings = TNUM)
+    val bodyB = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp, fontFeatureSettings = TNUM)
     val label = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, lineHeight = 24.sp)
-    val small = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Normal, lineHeight = 22.sp)
-    val mono = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, letterSpacing = 4.sp)
+    val small = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Normal, lineHeight = 24.sp, fontFeatureSettings = TNUM)
+    /** 크루 코드: 소리 내 읽어 주는 값이라 넓게, 본문 글꼴 그대로. */
+    val code = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontFeatureSettings = TNUM)
 }
 
+/** 일반 면. 테두리·그림자 없이 배경 대비로만 구분한다. */
 @Composable
 fun Panel(modifier: Modifier = Modifier, padding: Dp = 20.dp, color: Color = Argo.c.surface, border: Color? = null, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
             .clip(shape)
@@ -61,13 +63,28 @@ fun Panel(modifier: Modifier = Modifier, padding: Dp = 20.dp, color: Color = Arg
     )
 }
 
+/**
+ * 도로 표지판 면: 단색 바탕 + 안쪽으로 들인 흰 테두리 선(실제 표지판의 테두리).
+ * 크루 목적지(파랑)와 모이는 휴게소(초록)에만 쓴다.
+ */
+@Composable
+fun SignPanel(color: Color, modifier: Modifier = Modifier, padding: Dp = 20.dp, content: @Composable ColumnScope.() -> Unit) {
+    val onSign = Argo.c.onSign
+    Box(modifier.clip(RoundedCornerShape(14.dp)).background(color).padding(5.dp)) {
+        Column(
+            Modifier.fillMaxWidth().border(2.dp, onSign.copy(alpha = 0.85f), RoundedCornerShape(10.dp)).padding(padding),
+            content = content,
+        )
+    }
+}
+
 @Composable
 fun BigButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true, container: Color = Argo.c.primary, content: Color = Argo.c.onPrimary) {
     Button(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.defaultMinSize(minHeight = 68.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContainerColor = Argo.c.surfaceAlt, disabledContentColor = Argo.c.textSub),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
     ) {
@@ -82,7 +99,7 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.defaultMinSize(minHeight = 64.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(2.dp, Argo.c.outline),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = tint, disabledContentColor = Argo.c.textSub),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
@@ -94,15 +111,15 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 
 @Composable
 fun Chip(text: String, bg: Color, fg: Color, modifier: Modifier = Modifier) {
-    Box(modifier.clip(RoundedCornerShape(10.dp)).background(bg).padding(horizontal = 12.dp, vertical = 5.dp)) {
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 10.dp, vertical = 3.dp)) {
         Text(text, style = T.label, color = fg, maxLines = 1)
     }
 }
 
 @Composable
-fun Avatar(initial: String, color: Color, size: Dp = 52.dp, dim: Boolean = false) {
+fun Avatar(initial: String, color: Color, size: Dp = 52.dp, dim: Boolean = false, ring: Color? = null) {
     Box(
-        Modifier.size(size).clip(CircleShape).background(if (dim) Argo.c.outline else color),
+        Modifier.size(size).clip(CircleShape).let { if (ring != null) it.border(3.dp, ring, CircleShape) else it }.background(if (dim) Argo.c.outline else color),
         contentAlignment = Alignment.Center,
     ) { Text(initial, style = T.head.copy(fontSize = (size.value * 0.44f).sp), color = Color.White) }
 }
@@ -119,9 +136,9 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) =
     Text(text, style = T.label, color = Argo.c.textSub, modifier = modifier.padding(bottom = 8.dp))
 
 @Composable
-fun ListRow(onClick: (() -> Unit)?, content: @Composable RowScope.() -> Unit) {
+fun ListRow(onClick: (() -> Unit)?, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+        modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -78,14 +78,14 @@ private fun Brand(modifier: Modifier = Modifier) {
         Image(painterResource(R.drawable.ic_launcher), null, Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)))
         Column {
             Text("Argonauts", style = T.display, color = c.text)
-            Text("함께 달리는 크루 · 위치·목적지·도착 시간을 실시간으로", style = T.body, color = c.textSub)
+            Text("같이 달리는 차들의 위치와 도착 시간을 한 화면에", style = T.body, color = c.textSub)
         }
     }
 }
 
 @Composable
 private fun ParkOnly(driving: Boolean) {
-    if (driving) Panel(Modifier.fillMaxWidth(), color = Argo.c.warnContainer, border = Argo.c.warn) {
+    if (driving) Panel(Modifier.fillMaxWidth(), color = Argo.c.warnContainer) {
         Text("정차(P) 중에 크루를 만들거나 참여할 수 있어요", style = T.bodyB, color = Argo.c.warn)
     }
 }
@@ -139,15 +139,17 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
         val narrow = maxWidth < 900.dp
         val createPanel: @Composable (Modifier) -> Unit = { m -> Panel(m, padding = 36.dp) {
-                Chip("리더", c.primary, c.onPrimary)
-                Spacer(Modifier.height(16.dp))
-                Text("크루 만들기", style = T.display, color = c.text)
-                Text("지금 내비 목적지가 크루 목적지가 돼요. QR로 친구를 초대하세요.", style = T.body, color = c.textSub)
+                Text("크루 만들기", style = T.title, color = c.text)
+                Text("내가 리더가 되고, 친구는 QR이나 코드로 들어와요.", style = T.body, color = c.textSub)
                 Spacer(Modifier.height(24.dp))
-                Panel(Modifier.fillMaxWidth(), color = c.surfaceAlt, padding = 18.dp) {
-                    Text("크루 목적지", style = T.label, color = c.textSub)
-                    Text(navi.destination?.place?.name ?: "내비 목적지 없음 · 크루에서 정할 수 있어요", style = T.bodyB, color = c.text)
-                }
+                val navDest = navi.destination?.place?.name
+                if (navDest != null) {
+                    // 지금 내비 목적지가 그대로 크루 목적지가 된다 → 작은 표지판으로 미리 보여 준다
+                    SignPanel(c.sign, Modifier.fillMaxWidth(), padding = 14.dp) {
+                        Text(navDest, style = T.head, color = c.onSign, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text("지금 내비 목적지가 크루 목적지가 돼요", style = T.small, color = c.onSign.copy(alpha = 0.85f))
+                    }
+                } else Text("내비 목적지가 없어요. 크루를 만든 뒤에 정해도 돼요.", style = T.body, color = c.textSub)
                 Spacer(Modifier.height(20.dp))
                 OutlinedTextField(
                     value = crewName, onValueChange = { crewName = it.take(14) }, singleLine = true, enabled = !driving,
@@ -160,15 +162,13 @@ private fun HomeScreen(engine: CrewEngine, driving: Boolean) {
                 BigButton("크루 만들기", { engine.createCrew(crewName) }, Modifier.fillMaxWidth(), enabled = !driving, icon = Icons.Filled.Add)
             } }
         val joinPanel: @Composable (Modifier) -> Unit = { m -> Panel(m, padding = 36.dp) {
-                Chip("크루원", c.surfaceAlt, c.text)
-                Spacer(Modifier.height(16.dp))
-                Text("코드로 참여", style = T.display, color = c.text)
+                Text("코드로 참여", style = T.title, color = c.text)
                 Text("리더 화면의 6자리 크루 코드를 입력하세요.", style = T.body, color = c.textSub)
                 Spacer(Modifier.height(24.dp))
                 OutlinedTextField(
                     value = code, onValueChange = { code = it.uppercase().filter(Char::isLetterOrDigit).take(6); error = null }, singleLine = true, enabled = !driving && !joining,
-                    modifier = Modifier.fillMaxWidth(), textStyle = T.mono.copy(fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp), color = c.text),
-                    placeholder = { Text("ABC123", style = T.mono.copy(fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.outline) },
+                    modifier = Modifier.fillMaxWidth(), textStyle = T.code.copy(fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp), letterSpacing = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp), color = c.text),
+                    placeholder = { Text("ABC123", style = T.code.copy(fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp), letterSpacing = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.outline) },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.primary, unfocusedBorderColor = c.outline),
                 )
@@ -211,8 +211,8 @@ fun ToastHost(engine: CrewEngine, modifier: Modifier) {
     }
     AnimatedVisibility(msg != null, modifier, enter = fadeIn(), exit = fadeOut()) {
         Text(
-            msg ?: "", style = T.bodyB, color = c.onPrimary,
-            modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(c.primary).padding(horizontal = 28.dp, vertical = 16.dp),
+            msg ?: "", style = T.bodyB, color = c.bg,
+            modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(c.text).padding(horizontal = 28.dp, vertical = 16.dp),
         )
     }
 }

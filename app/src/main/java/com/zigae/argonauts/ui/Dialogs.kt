@@ -68,7 +68,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ArgoDialog(onDismiss: () -> Unit, width: Dp = 880.dp, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.padding(16.dp).widthIn(max = width).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Argo.c.surface).padding(32.dp)) { content() }
+        Box(Modifier.padding(16.dp).widthIn(max = width).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Argo.c.surface).padding(32.dp)) { content() }
     }
 }
 
@@ -97,7 +97,7 @@ fun QrDialog(code: String, crewName: String, onClose: () -> Unit) {
                 Text("$crewName 초대", style = T.title, color = c.text)
                 Text("휴대폰 카메라로 QR을 찍으면 웹에서 바로 참여해요. 다른 Pleos 차량은 앱에서 코드를 입력하세요.", style = T.body, color = c.textSub)
                 Text("크루 코드", style = T.label, color = c.textSub)
-                Text(code, style = T.mono.copy(fontSize = androidx.compose.ui.unit.TextUnit(40f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.text)
+                Text(code, style = T.code.copy(fontSize = androidx.compose.ui.unit.TextUnit(44f, androidx.compose.ui.unit.TextUnitType.Sp), letterSpacing = androidx.compose.ui.unit.TextUnit(6f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.text)
                 Text(url, style = T.small, color = c.textSub)
                 Spacer(Modifier.height(8.dp))
                 BigButton("닫기", onClose)
@@ -306,13 +306,12 @@ fun SummaryDialog(ui: CrewUi, onLeave: () -> Unit) {
     val started = ui.meta?.createdAt ?: arrived.firstOrNull()?.arrivedAt ?: System.currentTimeMillis()
     val last = arrived.lastOrNull()?.arrivedAt ?: System.currentTimeMillis()
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-        Column(Modifier.padding(16.dp).widthIn(max = 820.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surface)) {
-            Column(Modifier.fillMaxWidth().background(c.primary).padding(32.dp)) {
-                Text("원정 완료", style = T.label, color = c.onPrimary.copy(alpha = 0.8f))
-                Text("${ui.meta?.name ?: "크루"} · ${ui.destination?.name ?: ""}", style = T.title, color = c.onPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${arrived.size}대 모두 도착 · 총 ${Fmt.duration(((last - started) / 1000).toInt().coerceAtLeast(60))}", style = T.body, color = c.onPrimary.copy(alpha = 0.85f))
+        Column(Modifier.padding(16.dp).widthIn(max = 820.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.surface)) {
+            SignPanel(c.sign, Modifier.fillMaxWidth().padding(16.dp), padding = 24.dp) {
+                Text("${ui.destination?.name ?: "목적지"} 도착", style = T.title, color = c.onSign, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${ui.meta?.name ?: "크루"}의 ${arrived.size}명이 모두 도착했어요. 출발부터 ${Fmt.duration(((last - started) / 1000).toInt().coerceAtLeast(60))}", style = T.body, color = c.onSign.copy(alpha = 0.9f))
             }
-            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(start = 28.dp, end = 28.dp, bottom = 28.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SectionLabel("도착 순서")
                 arrived.forEachIndexed { i, m ->
                     RowCentered {

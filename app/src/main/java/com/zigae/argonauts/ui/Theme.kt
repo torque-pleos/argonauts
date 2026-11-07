@@ -14,8 +14,9 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * Argonauts 자체 토큰 (주간/야간).
- * 방향: 남색 계열을 주간 강조, 청록 계열을 야간 강조로 두고, 크루 색은 명도 단계가 고른 6색.
- * 차량 화면 기준(1~2초 안에 파악)으로 글자·터치 영역을 크게 잡는다.
+ * 방향: 도로 표지판. 길 위의 정보(크루 목적지 = 파란 일반도로 표지, 모이는 휴게소 = 초록 고속도로 표지)만 색을 쓰고,
+ * 버튼·글자는 무채색 잉크로 둔다. 화면의 색은 "어디로 가는지"를 뜻한다.
+ * 크루 색은 명도 단계가 고른 6색. 차량 화면 기준(1~2초 안에 파악)으로 글자·터치 영역을 크게 잡는다.
  */
 @Immutable
 data class ArgoColors(
@@ -26,16 +27,20 @@ data class ArgoColors(
     val outline: Color,
     val text: Color,
     val textSub: Color,
+    /** 버튼 등 조작 (주간 잉크, 야간은 눈부심을 줄이려 차분한 파랑). */
     val primary: Color,
     val onPrimary: Color,
-    val accent: Color,
+    /** 크루 목적지 표지 (파랑). */
+    val sign: Color,
+    /** 모이는 휴게소 표지 (초록). */
+    val signGreen: Color,
+    val onSign: Color,
     val success: Color,
     val successContainer: Color,
     val warn: Color,
     val warnContainer: Color,
     val danger: Color,
     val dangerContainer: Color,
-    val infoContainer: Color,
     val crew: List<Color>,
 ) {
     fun crewColor(i: Int) = crew[((i % crew.size) + crew.size) % crew.size]
@@ -43,25 +48,25 @@ data class ArgoColors(
 
 val DayColors = ArgoColors(
     night = false,
-    bg = Color(0xFFF2F4F7), surface = Color(0xFFFFFFFF), surfaceAlt = Color(0xFFE8ECF2), outline = Color(0xFFD3D9E2),
-    text = Color(0xFF0E1726), textSub = Color(0xFF586378),
-    primary = Color(0xFF0B2D5B), onPrimary = Color.White, accent = Color(0xFF0B87A6),
-    success = Color(0xFF167A33), successContainer = Color(0xFFE6F3E9),
-    warn = Color(0xFF9A5B00), warnContainer = Color(0xFFFBEBD3),
+    bg = Color(0xFFEEF0F2), surface = Color(0xFFFFFFFF), surfaceAlt = Color(0xFFE2E5E9), outline = Color(0xFFCDD2D8),
+    text = Color(0xFF15191E), textSub = Color(0xFF59616B),
+    primary = Color(0xFF15191E), onPrimary = Color.White,
+    sign = Color(0xFF0B4EA2), signGreen = Color(0xFF0E6B3F), onSign = Color.White,
+    success = Color(0xFF167A33), successContainer = Color(0xFFE3F1E7),
+    warn = Color(0xFF8F5300), warnContainer = Color(0xFFFBEBD3),
     danger = Color(0xFFB72C27), dangerContainer = Color(0xFFFAE5E4),
-    infoContainer = Color(0xFFE3EEFB),
     crew = listOf(Color(0xFF2563EB), Color(0xFF16A34A), Color(0xFFE2581B), Color(0xFF8B3FE0), Color(0xFFD13A35), Color(0xFFC98A00)),
 )
 
 val NightColors = ArgoColors(
     night = true,
-    bg = Color(0xFF0A111C), surface = Color(0xFF121C2B), surfaceAlt = Color(0xFF1A2639), outline = Color(0xFF2A3850),
-    text = Color(0xFFEEF2F8), textSub = Color(0xFF9DAABD),
-    primary = Color(0xFF46BCD8), onPrimary = Color(0xFF03141D), accent = Color(0xFF46BCD8),
-    success = Color(0xFF5BD07A), successContainer = Color(0xFF12301C),
+    bg = Color(0xFF0F1215), surface = Color(0xFF191D22), surfaceAlt = Color(0xFF242930), outline = Color(0xFF353B44),
+    text = Color(0xFFECEEF1), textSub = Color(0xFF9AA2AC),
+    primary = Color(0xFF3C77D0), onPrimary = Color.White,
+    sign = Color(0xFF1C4F96), signGreen = Color(0xFF145A37), onSign = Color(0xFFF2F4F6),
+    success = Color(0xFF5BD07A), successContainer = Color(0xFF14301D),
     warn = Color(0xFFF2B54A), warnContainer = Color(0xFF3A2A0E),
     danger = Color(0xFFF07A74), dangerContainer = Color(0xFF3B1716),
-    infoContainer = Color(0xFF15304A),
     crew = listOf(Color(0xFF5B8CFF), Color(0xFF43C46E), Color(0xFFFF8A4C), Color(0xFFB07CFF), Color(0xFFFF6B66), Color(0xFFF2B54A)),
 )
 

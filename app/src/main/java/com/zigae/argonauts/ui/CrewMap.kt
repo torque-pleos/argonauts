@@ -136,7 +136,7 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
         h.iconKeys["m:${mem.id}#want"] = key
     }
     m.destination?.let { d ->
-        wanted["dest"] = GeoPoint(d.at.lat, d.at.lon) to { pinIcon(ctx, d.name, colors.primary.toArgb(), colors.onPrimary.toArgb(), "목적지", m.night) }
+        wanted["dest"] = GeoPoint(d.at.lat, d.at.lon) to { pinIcon(ctx, d.name, colors.sign.toArgb(), colors.onSign.toArgb(), "목적지", m.night) }
         h.iconKeys["dest#want"] = "${d.name}|${m.night}"
     }
     m.waypoints.forEachIndexed { i, (p, c) ->
@@ -146,8 +146,11 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
     m.spots.forEachIndexed { i, p ->
         if (m.waypoints.any { it.first.sameAs(p) }) return@forEachIndexed // 이미 경유지 핀으로 표시
         val sel = i == m.spotIndex
-        val color = if (sel) colors.success.toArgb() else 0xFF7A8496.toInt()
-        wanted["spot:$i"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, color, 0xFFFFFFFF.toInt(), if (sel) "모이기" else "후보", m.night) }
+        // 고른 휴게소만 이름표, 나머지 후보는 작은 초록 점 (이름표끼리 겹치지 않게)
+        wanted["spot:$i"] = GeoPoint(p.at.lat, p.at.lon) to {
+            if (sel) pinIcon(ctx, p.name, colors.signGreen.toArgb(), colors.onSign.toArgb(), "모이기", m.night)
+            else spotDot(ctx, 0xFF1F8A50.toInt())
+        }
         h.iconKeys["spot:$i#want"] = "${p.name}|$sel|${m.night}"
     }
     m.pendingPlace?.let { p ->
@@ -155,7 +158,7 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
         h.iconKeys["req#want"] = "${p.name}|${m.night}"
     }
     m.picked?.let { p ->
-        wanted["pick"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, colors.accent.toArgb(), 0xFFFFFFFF.toInt(), "선택", m.night) }
+        wanted["pick"] = GeoPoint(p.at.lat, p.at.lon) to { pinIcon(ctx, p.name, colors.primary.toArgb(), colors.onPrimary.toArgb(), "선택", m.night) }
         h.iconKeys["pick#want"] = "${p.name}|${p.at.lat}|${m.night}"
     }
 
@@ -182,6 +185,8 @@ private fun render(h: MapHolder, m: MapModel, colors: ArgoColors, ctx: Context, 
         val want = h.iconKeys["$k#want"]
         if (want != h.iconKeys[k]) {
             marker.icon = BitmapDrawable(ctx.resources, icon())
+            // 휴게소: 고른 곳은 핀(아래 끝), 후보는 점(가운데)
+            if (k.startsWith("spot:")) marker.setAnchor(Marker.ANCHOR_CENTER, if (want?.contains("|true|") == true) 1.0f else 0.5f)
             h.iconKeys[k] = want ?: ""
         }
     }
@@ -282,6 +287,18 @@ private fun pinIcon(ctx: Context, name: String, color: Int, onColor: Int, tag: S
     val baseY = rect.centerY() - (label.descent() + label.ascent()) / 2
     c.drawText(tag, padH, baseY, tagP)
     c.drawText(text, padH + tagP.measureText(tag) + dp(ctx, 10f), baseY, label)
+    return bmp
+}
+
+/** 고르지 않은 휴게소 후보: 흰 테두리 초록 점. 누르면 그 휴게소로 바뀐다. */
+private fun spotDot(ctx: Context, color: Int): Bitmap {
+    val r = dp(ctx, 9f); val ring = dp(ctx, 3f)
+    val size = ((r + ring) * 2 + dp(ctx, 16f)).toInt() // 누르기 쉽게 여백 포함
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    p.color = 0xFFFFFFFF.toInt(); c.drawCircle(size / 2f, size / 2f, r + ring, p)
+    p.color = color; c.drawCircle(size / 2f, size / 2f, r, p)
     return bmp
 }
 
