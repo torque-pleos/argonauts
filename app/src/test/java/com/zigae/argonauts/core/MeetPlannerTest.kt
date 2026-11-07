@@ -34,7 +34,7 @@ class MeetPlannerTest {
         val back = MeetPlan.from(JSONObject(MeetPlan(listOf(spot), 1L).toJson().toString()))!!
         assertEquals(spot, back.spots.single())
         assertEquals(720, back.spots.single().waitS)
-        val m = Member("a", "건우", 0, MemberKind.CAR, pangyo, meetEta = mapOf(spot.id to 2900))
+        val m = Member("a", "하늘", 0, MemberKind.CAR, pangyo, meetEta = mapOf(spot.id to 2900))
         assertEquals(mapOf(spot.id to 2900), Member.from(JSONObject(m.toJson().toString()))!!.meetEta)
     }
 

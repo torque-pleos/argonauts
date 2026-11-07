@@ -11,7 +11,7 @@ class ModelTest {
 
     @Test fun memberRoundTrip() {
         val m = Member(
-            id = "a1", name = "건우", colorIndex = 2, kind = MemberKind.CAR, at = LatLon(37.41, 127.09), heading = 45.0,
+            id = "a1", name = "하늘", colorIndex = 2, kind = MemberKind.CAR, at = LatLon(37.41, 127.09), heading = 45.0,
             status = MemberStatus.DRIVING, destination = namiseom, remainM = 78_000, remainS = 4_600,
             waypoint = Place("가평 휴게소", LatLon(37.70, 127.54)), waypointRemainS = 3_000, updatedAt = 1_000L,
         )

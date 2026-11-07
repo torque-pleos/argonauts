@@ -25,7 +25,7 @@ adb -s emulator-5558 logcat -s Argo/Engine Argo/Navi Argo/Sync Argo/Demo Argo/Ge
 ```bash
 # 앱을 앞으로 띄우지 않고 시연 스크립트 실행 (내비 위 팝업 알림 확인용)
 adb -s emulator-5558 shell am broadcast -a com.zigae.argonauts.DEMO --es run jiyoung   # minsu | arrive
-adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es name 건우
+adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es name 하늘
 adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es dest 남이섬 --ed lat 37.7905 --ed lon 127.5258
 ```
 

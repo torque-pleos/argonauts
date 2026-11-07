@@ -105,7 +105,7 @@ private fun NameScreen(engine: CrewEngine, driving: Boolean) {
                     OutlinedTextField(
                         value = name, onValueChange = { name = it.take(10) }, singleLine = true, enabled = !driving,
                         modifier = Modifier.weight(1f), textStyle = T.title.copy(color = c.text),
-                        placeholder = { Text("예: 건우", style = T.title, color = c.textSub) },
+                        placeholder = { Text("예: 하늘", style = T.title, color = c.textSub) },
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.primary, unfocusedBorderColor = c.outline),
                     )
                     BigButton("시작하기", { engine.setName(name) }, enabled = name.isNotBlank() && !driving, icon = Icons.Filled.ArrowForward)

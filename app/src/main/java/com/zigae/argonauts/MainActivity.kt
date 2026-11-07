@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * 시연 준비용 (에뮬레이터는 adb로 한글 입력이 안 됨):
-     * `am start -n com.zigae.argonauts/.MainActivity --es name 건우 --es dest 남이섬 --ed lat 37.7905 --ed lon 127.5258`
+     * `am start -n com.zigae.argonauts/.MainActivity --es name 하늘 --es dest 남이섬 --ed lat 37.7905 --ed lon 127.5258`
      */
     private fun handleDemoExtras(i: Intent?) {
         if (i == null || !BuildConfig.DEBUG) return
