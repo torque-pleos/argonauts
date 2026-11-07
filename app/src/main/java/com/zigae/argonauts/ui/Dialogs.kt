@@ -74,11 +74,11 @@ fun ArgoDialog(onDismiss: () -> Unit, width: Dp = 880.dp, content: @Composable (
 
 // region 초대 QR
 
+/** 초대 QR. 픽셀을 배열로 한 번에 채운다 (setPixel 40만 번은 메인 스레드를 1초 넘게 멈춰 탭이 씹힌 것처럼 보였다). */
 fun qrBitmap(text: String, size: Int = 640): Bitmap {
     val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 1))
-    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    for (x in 0 until size) for (y in 0 until size) bmp.setPixel(x, y, if (m[x, y]) 0xFF0E1726.toInt() else 0xFFFFFFFF.toInt())
-    return bmp
+    val px = IntArray(size * size) { i -> if (m[i % size, i / size]) 0xFF0E1726.toInt() else 0xFFFFFFFF.toInt() }
+    return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
 }
 
 fun inviteUrl(code: String) = "${BuildConfig.WEB_URL}/?c=$code"
@@ -87,11 +87,12 @@ fun inviteUrl(code: String) = "${BuildConfig.WEB_URL}/?c=$code"
 fun QrDialog(code: String, crewName: String, onClose: () -> Unit) {
     val c = Argo.c
     val url = inviteUrl(code)
-    val bmp = remember(url) { qrBitmap(url) }
+    // 창은 바로 띄우고 QR은 백그라운드에서 만든다
+    val bmp by androidx.compose.runtime.produceState<Bitmap?>(null, url) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { qrBitmap(url) } }
     ArgoDialog(onClose) {
         Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clip(RoundedCornerShape(20.dp)).background(androidx.compose.ui.graphics.Color.White).padding(16.dp)) {
-                Image(bmp.asImageBitmap(), "초대 QR", Modifier.size(320.dp))
+                bmp?.let { Image(it.asImageBitmap(), "초대 QR", Modifier.size(320.dp)) } ?: Box(Modifier.size(320.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("$crewName 초대", style = T.title, color = c.text)
