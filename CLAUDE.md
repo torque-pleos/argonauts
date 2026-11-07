@@ -72,7 +72,8 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | 내비 지도에 그리기 | NaviHelper에 오버레이·경로 좌표 조회 API 없음 → 크루원 경로 선은 그리지 않는다(다시 계산한 선은 실제 경로와 달라 제거) |
 | `addWaypoint` 후 경유지 조회 | `onWayPointInfo` 좌표가 0.0으로 옴 → 앱이 넣은 장소(이름 일치) 좌표로 채운다 |
 | 화면 분할 | 앱 영역 1:1 분할 가능(`car.splitscreen_multitasking`). 창 오른쪽 손잡이(⋮)를 왼쪽으로 끌면 앱 841px · 내비 841px. `am start`로 띄우면 창이 이상한 위치(0,0)에 붙으므로 GNB 앱 아이콘으로 띄운다(아이콘 탭은 보이기/숨기기 토글) |
-| 상단 팝업 알림 | IMPORTANCE_HIGH 알림이 내비 위에 약 10초 표시 후 알림 센터로. 액션 버튼 동작 |
+| 상단 팝업 알림 | IMPORTANCE_HIGH 알림이 내비 위에 몇 초 표시 후 알림 센터로(약 3~10초, 같은 상황에서도 달랐음). 액션 버튼 동작 |
+| `requestRoute`와 경유지 | 목적지를 바꾸면 **내비가 경유지를 모두 지운다**(`onWayPointInfo []`, 내비 진행 막대에서도 사라짐). 그래서 크루 목적지 변경 후 "○○ 들르는 중"·경유 핀이 사라지는 게 맞다. 새 목적지 기준으로 모이기 휴게소가 다시 추천된다 |
 | Supabase Realtime | 구독 확인(`system` 메시지) 전에 생긴 변경은 오지 않음 → 확인 후 스냅샷을 불러온다. 필터 구독은 DELETE 이벤트를 못 받음 → 삭제는 `v = null` |
 
 ## Virtual Console (Argonauts 에뮬레이터)
