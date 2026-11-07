@@ -44,10 +44,17 @@ adb -s emulator-5558 shell am start -n com.zigae.argonauts/.MainActivity --es de
 | `net/Web.kt` | OSRM 경로, Photon 장소 검색 |
 | `service/CrewService.kt` | `specialUse` 포그라운드 서비스 (크루에 있는 동안) |
 | `service/CrewNotifier.kt` | 앱이 안 보일 때 새 카드·크루원 도착 → 상단 팝업 알림(채널 `crew_news`, IMPORTANCE_HIGH), 알림 버튼은 `ActionReceiver`가 엔진 동작 호출. 앱이 보이는지는 `ArgoApp`의 started 액티비티 수 |
-| `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25) · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드, 폭 900dp 미만이면 위 지도 + 아래 패널) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
+| `ui/` | `Theme`(주간/야간 토큰, UI 배율 1.25. 디자인 규칙은 아래 '디자인') · `CrewMap`(osmdroid, 간결 모드) · `CrewScreen`(지도 + 사이드 패널·카드, 폭 900dp 미만이면 위 지도 + 아래 패널) · `HomeScreen`(이름·만들기·참여) · `Dialogs`(QR·목적지 고르기·크루원 상세·설정/시연·원정 완료) · `Components` |
 | `supabase/` | 스키마 마이그레이션(`crew_kv`, RLS, Realtime, pg_cron 정리). 적용: `set -a; . ./.env; set +a; supabase db push` (DB 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD`, 커밋 금지) |
 | `web/index.html` · `web/sw.js` | 친구용 휴대폰 웹 (Leaflet + Supabase REST·Realtime 직접 연결). 크루 소식 알림은 `checkNews`(보이면 토스트, 숨겨지면 `sw.js`의 `showNotification` — Android Chrome은 `new Notification()` 불가). 배포: `cd web && vercel deploy --prod --yes --scope zi-gae` → https://argonauts-crew.vercel.app |
 | `docs/probe/` | 구현 전 NaviHelper 검증 앱 코드(참고용, 빌드 제외) |
+
+## 디자인 (앱·웹 공통)
+
+- 방향은 **도로 표지판**. 색은 길 위의 정보에만 쓴다: 크루 목적지 = 파란 표지(`sign`), 모이는 휴게소 = 초록 표지(`signGreen`), 둘 다 안쪽에 흰 테두리 선(`SignPanel`, 웹 `.sign`). 버튼은 주간 잉크(검정), 야간 차분한 파랑. 지도 핀 색도 같은 규칙.
+- 면은 테두리·그림자 없이 배경 대비로만 구분한다. 결정이 필요한 카드(승인 요청·결과)만 상태 색 바탕.
+- 크루 목록은 카드 없이 **행렬**(목적지에 가까운 순)로, 아바타를 잇는 세로선이 순서를 뜻한다. 도착 예정 시각은 오른쪽 정렬 고정폭 숫자(tnum).
+- 쓰지 않는 것: 고정폭 글꼴, 라벨마다 붙는 작은 머리말, `A · B · C` 가운뎃점 나열(문장이나 쉼표로), 한쪽 색 띠 카드, 휴게소 후보 이름표(후보는 초록 점, 고른 곳만 이름표).
 
 ## 에뮬레이터에서 확인한 사실
 
