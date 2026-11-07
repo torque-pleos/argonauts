@@ -23,6 +23,8 @@ android {
 
     buildTypes {
         release {
+            // 공모전 제출용: 별도 키스토어 없이 디버그 키로 서명해 바로 설치할 수 있게 한다(스토어 배포용 아님).
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
