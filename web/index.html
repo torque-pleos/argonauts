@@ -7,88 +7,107 @@
 <meta name="description" content="Pleos 차량 크루에 휴대폰으로 참여해 위치·목적지·도착 시간을 함께 봅니다.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
+  /* 도로 표지판 방향: 크루 목적지 = 파란 표지, 모이는 휴게소 = 초록 표지. 버튼·글자는 무채색 잉크. (차량 앱과 같은 토큰) */
   :root {
-    --bg:#f2f4f7; --surface:#fff; --surface-alt:#e8ecf2; --outline:#d3d9e2;
-    --text:#0e1726; --sub:#586378; --primary:#0b2d5b; --on-primary:#fff; --accent:#0b87a6;
-    --ok:#167a33; --ok-bg:#e6f3e9; --warn:#9a5b00; --warn-bg:#fbebd3; --bad:#b72c27; --bad-bg:#fae5e4; --info-bg:#e3eefb;
+    --bg:#eef0f2; --surface:#fff; --surface-alt:#e2e5e9; --outline:#cdd2d8;
+    --text:#15191e; --sub:#59616b; --primary:#15191e; --on-primary:#fff;
+    --sign:#0b4ea2; --sign-green:#0e6b3f; --on-sign:#fff;
+    --ok:#167a33; --ok-bg:#e3f1e7; --warn:#8f5300; --warn-bg:#fbebd3; --bad:#b72c27; --bad-bg:#fae5e4;
     --tile-filter: saturate(.45);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg:#0a111c; --surface:#121c2b; --surface-alt:#1a2639; --outline:#2a3850;
-      --text:#eef2f8; --sub:#9daabd; --primary:#46bcd8; --on-primary:#03141d; --accent:#46bcd8;
-      --ok:#5bd07a; --ok-bg:#12301c; --warn:#f2b54a; --warn-bg:#3a2a0e; --bad:#f07a74; --bad-bg:#3b1716; --info-bg:#15304a;
+      --bg:#0f1215; --surface:#191d22; --surface-alt:#242930; --outline:#353b44;
+      --text:#eceef1; --sub:#9aa2ac; --primary:#3c77d0; --on-primary:#fff;
+      --sign:#1c4f96; --sign-green:#145a37; --on-sign:#f2f4f6;
+      --ok:#5bd07a; --ok-bg:#14301d; --warn:#f2b54a; --warn-bg:#3a2a0e; --bad:#f07a74; --bad-bg:#3b1716;
       --tile-filter: invert(.9) hue-rotate(180deg) saturate(.3) brightness(.9);
     }
   }
   * { box-sizing:border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-variant-numeric: tabular-nums;
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
   button, input { font:inherit; }
   .wrap { max-width:640px; margin:0 auto; padding:16px; }
   .brand { display:flex; gap:12px; align-items:center; margin:8px 0 16px; }
-  .brand svg { width:44px; height:44px; border-radius:12px; flex:none; }
+  .brand svg { width:44px; height:44px; border-radius:11px; flex:none; }
   .brand h1 { font-size:22px; margin:0; }
   .brand p { margin:2px 0 0; color:var(--sub); font-size:14px; }
-  .card { background:var(--surface); border-radius:18px; padding:18px; margin-bottom:12px; }
+  .card { background:var(--surface); border-radius:16px; padding:18px; margin-bottom:12px; }
   .card h2 { font-size:19px; margin:0 0 6px; }
   .muted { color:var(--sub); font-size:14px; }
   label { display:block; font-size:13px; font-weight:700; color:var(--sub); margin:12px 0 6px; }
   input[type=text] { width:100%; padding:14px; border-radius:12px; border:2px solid var(--outline); background:var(--surface); color:var(--text); font-size:17px; }
   input:focus { outline:none; border-color:var(--primary); }
-  .code { font-family: ui-monospace, Menlo, monospace; letter-spacing:4px; text-transform:uppercase; font-size:24px; font-weight:700; }
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:52px; border:0; border-radius:14px;
+  .code { letter-spacing:5px; text-transform:uppercase; font-size:24px; font-weight:800; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:52px; border:0; border-radius:12px;
     background:var(--primary); color:var(--on-primary); font-weight:700; font-size:17px; margin-top:14px; cursor:pointer; }
   .btn.ghost { background:transparent; color:var(--text); border:2px solid var(--outline); }
   .btn.danger { background:transparent; color:var(--bad); border:2px solid var(--outline); }
   .btn:disabled { opacity:.45; }
+  .btn:focus-visible, input:focus-visible, .result:focus-visible { outline:3px solid var(--sign); outline-offset:2px; }
   .err { color:var(--bad); font-weight:700; margin-top:10px; font-size:14px; }
-  #map { height:46vh; min-height:280px; border-radius:18px; overflow:hidden; margin-bottom:12px; background:var(--surface-alt); }
+  #map { height:46vh; min-height:280px; border-radius:16px; overflow:hidden; margin-bottom:12px; background:var(--surface-alt); }
   .leaflet-tile-pane { filter: var(--tile-filter); }
-  .dest { background:var(--primary); color:var(--on-primary); }
-  .dest .label { font-size:13px; opacity:.8; font-weight:700; }
-  .dest .name { font-size:22px; font-weight:800; margin:2px 0; }
-  .row { display:flex; align-items:center; gap:12px; padding:10px 4px; border-top:1px solid var(--surface-alt); }
-  .row:first-of-type { border-top:0; }
-  .av { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; flex:none; }
+  /* 표지판: 단색 바탕 + 안쪽으로 들인 흰 테두리 선 */
+  .sign { background:var(--sign); color:var(--on-sign); border-radius:14px; padding:5px; margin-bottom:12px; }
+  .sign.green { background:var(--sign-green); }
+  .sign.plain { background:var(--surface); color:var(--text); }
+  .sign.plain > .in { border-color:transparent; }
+  .sign > .in { border:2px solid color-mix(in srgb, var(--on-sign) 85%, transparent); border-radius:10px; padding:12px 14px; }
+  .sign .name { font-size:24px; font-weight:800; line-height:1.25; letter-spacing:-.3px; }
+  .sign .sub { opacity:.9; font-size:15px; margin-top:2px; }
+  .sign .eta { display:flex; align-items:flex-end; gap:6px; margin-top:4px; }
+  .sign .eta b { font-size:34px; line-height:1; }
+  .sign .eta span { font-size:17px; font-weight:700; }
+  .sign .eta .right { margin-left:auto; text-align:right; font-size:15px; opacity:.9; }
+  .sign .label { font-size:13px; font-weight:700; opacity:.85; display:flex; justify-content:space-between; align-items:center; }
+  .sign .label button { font:inherit; font-size:13px; color:var(--on-sign); background:none; border:1.5px solid color-mix(in srgb, var(--on-sign) 60%, transparent); border-radius:8px; padding:3px 10px; cursor:pointer; opacity:1; }
+  .who { display:flex; flex-wrap:wrap; gap:6px 14px; margin:6px 0 2px; }
+  .who span { display:inline-flex; align-items:center; gap:6px; font-weight:800; }
+  .who i { width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-style:normal; font-size:12px; color:#fff; }
+  /* 크루 행렬: 목적지에 가까운 순. 아바타를 잇는 세로선이 순서를 뜻한다 */
+  .list { margin:4px 0 12px; }
+  .list .head { display:flex; justify-content:space-between; color:var(--sub); font-size:13px; font-weight:700; padding:0 4px 4px; }
+  .row { position:relative; display:flex; align-items:center; gap:12px; padding:10px 4px; }
+  .row::before { content:""; position:absolute; left:22px; width:4px; top:0; bottom:0; background:var(--outline); }
+  .row:first-of-type::before { top:50%; }
+  .row:last-child::before { bottom:50%; }
+  .row:only-of-type::before { display:none; }
+  .av { position:relative; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; flex:none; box-shadow:0 0 0 3px var(--bg); }
   .grow { flex:1; min-width:0; }
   .nm { font-weight:700; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nm small { color:var(--sub); font-weight:400; font-size:13px; margin-left:6px; }
   .ln { color:var(--sub); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .eta { text-align:right; }
-  .eta b { display:block; font-size:18px; }
-  .eta small { color:var(--sub); font-size:12px; }
-  .chip { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:700; background:var(--surface-alt); color:var(--sub); margin-left:6px; vertical-align:2px; }
-  .chip.lead { background:var(--primary); color:var(--on-primary); }
-  .chip.ok { background:var(--ok-bg); color:var(--ok); }
-  .banner { border-radius:14px; padding:14px; margin-bottom:12px; font-weight:700; border:2px solid; }
-  .banner.info { background:var(--info-bg); border-color:var(--accent); }
-  .banner.ok { background:var(--ok-bg); border-color:var(--ok); color:var(--ok); }
-  .banner.bad { background:var(--bad-bg); border-color:var(--bad); color:var(--bad); }
-  .banner.warn { background:var(--warn-bg); border-color:var(--warn); color:var(--warn); }
+  .when { text-align:right; font-size:18px; font-weight:800; }
+  .when.ok { color:var(--ok); }
+  .when.dim { color:var(--sub); font-size:13px; font-weight:400; }
+  .chip { display:inline-block; padding:1px 7px; border-radius:7px; font-size:12px; font-weight:700; background:var(--surface-alt); color:var(--text); margin-left:6px; vertical-align:2px; }
+  .banner { border-radius:12px; padding:12px 14px; margin-bottom:12px; font-weight:700; }
+  .banner.info { background:var(--surface); }
+  .banner.ok { background:var(--ok-bg); color:var(--ok); }
+  .banner.bad { background:var(--bad-bg); color:var(--bad); }
+  .banner.warn { background:var(--warn-bg); color:var(--warn); }
   .result { padding:12px; border-radius:12px; cursor:pointer; }
-  .result.sel { background:var(--info-bg); outline:2px solid var(--accent); }
+  .result.sel { background:var(--surface-alt); box-shadow:inset 4px 0 0 var(--text); }
   .result b { display:block; }
   .top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; }
-  .top .code { font-size:18px; }
+  .top .code { font-size:18px; letter-spacing:3px; }
   .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--bad); }
   .dot.on { background:var(--ok); }
-  .meet { background:var(--ok-bg); border:2px solid var(--ok); }
-  .meet .label { font-size:13px; font-weight:700; color:var(--ok); display:flex; justify-content:space-between; }
-  .meet .label a { color:var(--primary); cursor:pointer; }
-  .meet .name { font-size:20px; font-weight:800; margin:2px 0; }
-  .pin { padding:4px 10px; border-radius:10px; color:#fff; font-weight:800; font-size:13px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+  .pin { padding:4px 10px; border-radius:8px; color:#fff; font-weight:800; font-size:13px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.25); }
   .mk { display:flex; flex-direction:column; align-items:center; }
   .mk .c { width:34px; height:34px; border-radius:50%; border:3px solid #fff; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  .spotdot { width:16px; height:16px; border-radius:50%; background:#1f8a50; border:3px solid #fff; transform:translate(-50%,-50%); cursor:pointer; }
   .mk .t { margin-top:3px; background:var(--surface); color:var(--text); font-size:12px; font-weight:700; padding:1px 8px; border-radius:9px; white-space:nowrap; }
   .toasts { position:fixed; top:0; left:0; right:0; z-index:2000; display:flex; flex-direction:column; gap:8px; align-items:center;
     padding:calc(env(safe-area-inset-top) + 10px) 16px 0; pointer-events:none; }
-  .toast { width:100%; max-width:608px; background:var(--surface); color:var(--text); border-left:6px solid var(--accent); border-radius:14px;
-    padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.25); pointer-events:auto; cursor:pointer; animation:drop .25s ease-out; }
+  .toast { width:100%; max-width:608px; background:var(--text); color:var(--bg); border-radius:12px;
+    padding:12px 14px; box-shadow:0 4px 16px rgba(0,0,0,.2); pointer-events:auto; cursor:pointer; animation:drop .2s ease-out; }
   .toast b { display:block; font-size:16px; }
-  .toast span { color:var(--sub); font-size:14px; }
-  .toast.ok { border-left-color:var(--ok); }
-  .toast.bad { border-left-color:var(--bad); }
-  @keyframes drop { from { transform:translateY(-16px); opacity:0; } }
+  .toast span { opacity:.75; font-size:14px; }
+  @keyframes drop { from { transform:translateY(-12px); opacity:0; } }
+  @media (prefers-reduced-motion: reduce) { .toast { animation:none; } }
   .notifyAsk { display:flex; align-items:center; gap:12px; }
   .notifyAsk .btn { width:auto; margin:0; padding:0 18px; min-height:44px; flex:none; font-size:15px; }
   .hidden { display:none !important; }
@@ -99,7 +118,7 @@
 <div class="wrap">
   <div class="brand">
     <svg viewBox="0 0 108 108" aria-hidden="true"><path fill="#0B2D5B" d="M0 0h108v108H0z"/><path fill="#fff" d="M54 22v48H28z"/><path fill="#3FB6D3" d="M58 30v40h22z"/><path fill="#fff" d="M24 76h60l-8 10H32z"/><circle cx="38" cy="95" r="4" fill="#E8641B"/><circle cx="54" cy="95" r="4" fill="#3FB6D3"/><circle cx="70" cy="95" r="4" fill="#1F9D4C"/></svg>
-    <div><h1>Argonauts</h1><p>함께 달리는 크루 · 휴대폰으로 참여</p></div>
+    <div><h1>Argonauts</h1><p>Pleos 차량 크루에 휴대폰으로 참여해요</p></div>
   </div>
 
   <!-- 참여 -->
@@ -122,17 +141,16 @@
     </div>
     <div id="banner"></div>
     <div class="card notifyAsk hidden" id="notifyAsk">
-      <div class="grow"><b>크루 소식 알림</b><div class="muted">다른 앱을 보고 있어도 경유지·목적지 변경·도착 소식을 알려드려요</div></div>
+      <div class="grow"><b>크루 소식 알림</b><div class="muted">다른 앱을 보고 있어도 경유지, 목적지 변경, 도착 소식을 알려 드려요</div></div>
       <button class="btn" id="notifyBtn">알림 켜기</button>
     </div>
     <div id="map"></div>
-    <div class="card dest">
-      <div class="label">크루 목적지</div>
-      <div class="name" id="destName">아직 정하지 않았어요</div>
-      <div id="destSub" style="opacity:.85"></div>
-    </div>
-    <div class="card meet hidden" id="meet"></div>
-    <div class="card" id="members"></div>
+    <div class="sign" id="dest"><div class="in">
+      <div class="name" id="destName">목적지 미정</div>
+      <div class="sub" id="destSub"></div>
+    </div></div>
+    <div class="sign green hidden" id="meet"></div>
+    <div class="list" id="members"></div>
     <div class="card">
       <h2>목적지 변경 요청</h2>
       <p class="muted">리더가 차에서 수락하면 크루 모두의 목적지가 바뀌어요. 운전 중인 친구 대신 동승자가 보내기 좋아요.</p>
@@ -145,7 +163,7 @@
     </div>
     <button id="leaveBtn" class="btn danger">크루 나가기</button>
   </section>
-  <footer>지도 © OpenStreetMap contributors · 검색 Photon · 공모전 시연용</footer>
+  <footer>지도 © OpenStreetMap contributors, 장소 검색 Photon. 공모전 시연용입니다.</footer>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -354,17 +372,19 @@
     const dest = meta.dest;
     $('crewName').textContent = meta.name || '크루';
     $('count').textContent = list.length + '명';
-    $('destName').textContent = dest ? dest.name : '아직 정하지 않았어요';
-    $('destSub').textContent = dest ? (me?.at ? '내 위치에서 직선 ' + km(dist(me.at, dest)) : '') : '아래에서 목적지를 제안할 수 있어요';
+    $('dest').classList.toggle('plain', !dest);
+    $('destName').textContent = dest ? dest.name : '목적지를 아직 정하지 않았어요';
+    $('destSub').textContent = dest ? (me?.at ? '내 위치에서 직선 ' + km(dist(me.at, dest)) : '') : '아래에서 리더에게 목적지를 제안할 수 있어요';
 
     // 지도
     const seen = new Set();
     list.forEach((m) => { if (m.at) { seen.add('m:' + m.id); setLayer('m:' + m.id, [m.at.lat, m.at.lon], memberHtml(m, m.id === myId), m.id === myId ? 1000 : 500); } });
     Object.keys(layers).filter((k) => k.startsWith('m:') && !seen.has(k)).forEach((k) => setLayer(k, null));
-    setLayer('dest', dest ? [dest.lat, dest.lon] : null, dest ? pinHtml('목적지', dest.name, 'var(--primary)') : '');
-    const wps = list.filter((m) => m.wp).map((m) => m.wp);
+    setLayer('dest', dest ? [dest.lat, dest.lon] : null, dest ? pinHtml('목적지', dest.name, 'var(--sign)') : '');
+    const wpm = list.filter((m) => m.wp);
+    const wps = wpm.map((m) => m.wp);
     Object.keys(layers).filter((k) => k.startsWith('wp:')).forEach((k) => setLayer(k, null));
-    wps.forEach((w, i) => setLayer('wp:' + i, [w.lat, w.lon], pinHtml('경유', w.name, '#0b87a6'), 400));
+    wpm.forEach((m, i) => setLayer('wp:' + i, [m.wp.lat, m.wp.lon], pinHtml('경유', m.wp.name, COLORS[((m.color % 6) + 6) % 6]), 400));
     // 모이기 좋은 휴게소 (리더 차량이 계산해 공유)
     const spots = (dest && meet?.spots) || [];
     const spot = spots.find((p) => p.id === spotId) || spots[0];
@@ -372,7 +392,8 @@
     spots.forEach((p, i) => {
       if (wps.some((w) => same(w, p.place))) return;
       const sel = p === spot;
-      setLayer('spot:' + i, [p.place.lat, p.place.lon], pinHtml(sel ? '모이기' : '후보', p.place.name, sel ? 'var(--ok)' : '#7a8496'), sel ? 300 : 100);
+      // 고른 휴게소만 이름표, 나머지 후보는 초록 점 (이름표끼리 겹치지 않게)
+      setLayer('spot:' + i, [p.place.lat, p.place.lon], sel ? pinHtml('모이기', p.place.name, 'var(--sign-green)') : `<div class="spotdot" title="${esc(p.place.name)}"></div>`, sel ? 300 : 100);
       layers['spot:' + i].off('click').on('click', () => { spotId = p.id; render(); });
     });
     renderMeet(spot, spots.length, list);
@@ -380,35 +401,37 @@
 
     const pending = request && request.status === 'PENDING' ? request.place : null;
     setLayer('req', pending ? [pending.lat, pending.lon] : null, pending ? pinHtml('변경 요청', pending.name, '#c98a00') : '');
-    setLayer('pick', chosen ? [chosen.lat, chosen.lon] : null, chosen ? pinHtml('선택', chosen.name, '#0b87a6') : '');
+    setLayer('pick', chosen ? [chosen.lat, chosen.lon] : null, chosen ? pinHtml('선택', chosen.name, 'var(--primary)') : '');
     const pts = list.filter((m) => m.at).map((m) => [m.at.lat, m.at.lon]).concat(dest ? [[dest.lat, dest.lon]] : []);
     if (autoFit && pts.length) { if (pts.length === 1) map.setView(pts[0], 13); else map.fitBounds(pts, { padding: [40, 40], animate: false }); }
 
-    // 크루 목록
-    const rows = list.sort((a, b) => (a.status === 'OFFLINE') - (b.status === 'OFFLINE') || (a.remainM ?? 1e12) - (b.remainM ?? 1e12)).map((m) => {
+    // 크루 행렬: 도착한 차 → 목적지까지 남은 거리가 짧은 차 → 거리 모름 → 연결 끊김
+    const rank = (m) => (m.status === 'OFFLINE' ? 3 : m.status === 'ARRIVED' ? 0 : m.remainM != null ? 1 : 2);
+    const rows = list.sort((a, b) => rank(a) - rank(b) || (a.arrivedAt ?? 0) - (b.arrivedAt ?? 0) || (a.remainM ?? 1e12) - (b.remainM ?? 1e12)).map((m) => {
       const col = COLORS[((m.color % 6) + 6) % 6];
       const parts = [];
       if (m.id !== myId && m.at && me?.at) parts.push(km(dist(m.at, me.at)) + ' 떨어짐');
       if (m.remainM != null && m.status !== 'ARRIVED') parts.push('남은 ' + km(m.remainM));
       if (m.wp && m.status !== 'ARRIVED') parts.push(esc(m.wp.name) + ' 들르는 중');
-      else if (m.status !== 'ARRIVED') parts.push(STATUS[m.status] || '');
+      else if (m.status === 'ARRIVED') parts.push('도착했어요');
+      else if (m.status !== 'OFFLINE') parts.push(STATUS[m.status] || '');
       let right;
-      if (m.status === 'ARRIVED') right = `<span class="chip ok">도착${m.arrivedAt ? ' ' + clock(m.arrivedAt) : ''}</span>`;
-      else if (m.status === 'OFFLINE') right = '<span class="chip">연결 끊김</span>';
-      else if (m.remainS != null && dest && same(m.dest, dest)) right = `<b>${clock((m.updatedAt || now) + m.remainS * 1000)}</b><small>도착 예정</small>`;
+      if (m.status === 'ARRIVED') right = `<div class="when ok">✓ ${m.arrivedAt ? clock(m.arrivedAt) : '도착'}</div>`;
+      else if (m.status === 'OFFLINE') right = '<div class="when dim">연결 끊김</div>';
+      else if (m.remainS != null && dest && same(m.dest, dest)) right = `<div class="when">${clock((m.updatedAt || now) + m.remainS * 1000)}</div>`;
       else right = '';
       return `<div class="row"><div class="av" style="background:${m.status === 'OFFLINE' ? '#9AA3B2' : col}">${esc((m.name || '?').slice(0, 1))}</div>
-        <div class="grow"><div class="nm">${esc(m.name)}${m.id === myId ? ' (나)' : ''}${meta.leaderId === m.id ? '<span class="chip lead">리더</span>' : ''}${m.kind === 'WEB' ? '<span class="chip">휴대폰</span>' : ''}</div>
-        <div class="ln">${parts.join(' · ')}</div></div><div class="eta">${right}</div></div>`;
+        <div class="grow"><div class="nm">${esc(m.name)}${m.id === myId ? ' (나)' : ''}${meta.leaderId === m.id ? '<span class="chip">리더</span>' : ''}${m.kind === 'WEB' ? '<small>휴대폰</small>' : ''}</div>
+        <div class="ln">${parts.join(', ')}</div></div>${right}</div>`;
     }).join('');
-    $('members').innerHTML = '<h2>크루원</h2>' + rows;
+    $('members').innerHTML = `<div class="head"><span>크루원 ${list.length}</span>${dest ? '<span>도착 예정</span>' : ''}</div>` + rows;
 
     // 요청 상태 배너
     if (request && request.fromId === myId) {
-      const t = { PENDING: ['info', `${request.place.name} 변경 요청을 보냈어요 · 리더 응답 대기 중`], ACCEPTED: ['ok', `리더가 ${request.place.name}(으)로 변경을 수락했어요`], DECLINED: ['bad', `리더가 ${request.place.name} 변경을 거절했어요`], EXPIRED: ['bad', `${request.place.name} 변경 요청이 만료됐어요`] }[request.status];
+      const t = { PENDING: ['info', `${request.place.name}(으)로 바꾸자고 리더에게 요청했어요. 답을 기다리는 중이에요`], ACCEPTED: ['ok', `리더가 ${request.place.name}(으)로 변경을 수락했어요`], DECLINED: ['bad', `리더가 ${request.place.name} 변경을 거절했어요`], EXPIRED: ['bad', `${request.place.name} 변경 요청이 만료됐어요`] }[request.status];
       if (t) banner(t[0], t[1]);
     } else if (list.length >= 2 && dest && list.filter((m) => m.kind === 'CAR' && m.status !== 'OFFLINE').every((m) => m.status === 'ARRIVED')) {
-      banner('ok', '모든 차량이 도착했어요 · 원정 완료!');
+      banner('ok', '모든 차량이 도착했어요');
     }
     const busy = request && request.status === 'PENDING' && now < request.createdAt + 180000;
     $('reqBtn').disabled = !chosen || busy;
@@ -418,15 +441,19 @@
     const el = $('meet');
     if (!spot) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
-    const names = Object.fromEntries(list.map((m) => [m.id, m.id === myId ? '나' : m.name]));
-    const eta = Object.entries(spot.eta || {}).sort((a, b) => a[1] - b[1]).map(([id, s]) => `${esc(names[id] || '크루원')} ${dur(s)}`).join(' · ');
+    const byId = Object.fromEntries(list.map((m) => [m.id, m]));
+    const who = Object.entries(spot.eta || {}).sort((a, b) => a[1] - b[1]).map(([id, s]) => {
+      const m = byId[id];
+      const col = m ? COLORS[((m.color % 6) + 6) % 6] : '#9AA3B2';
+      return `<span><i style="background:${col}" title="${esc(m?.name || '크루원')}">${esc((m?.name || '?').slice(0, 1))}</i>${dur(s)}</span>`;
+    }).join('');
     const vals = Object.values(spot.eta || {}), wait = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
     const joined = list.filter((m) => m.wp && same(m.wp, spot.place)).map((m) => esc(m.id === myId ? '나' : m.name));
-    el.innerHTML = `<div class="label"><span>모이기 좋은 휴게소</span>${count > 1 ? '<a id="nextSpot">다른 곳 보기</a>' : ''}</div>
+    el.innerHTML = `<div class="in"><div class="label"><span>모이기 좋은 휴게소</span>${count > 1 ? '<button id="nextSpot" type="button">다른 곳</button>' : ''}</div>
       <div class="name">${esc(spot.place.name)}</div>
-      <div>${eta}</div>
-      <div class="muted">${wait < 120 ? '거의 같이 도착' : '먼저 온 차 최대 ' + dur(wait) + ' 대기'} · ${spot.detourS < 120 ? '가는 길 그대로' : dur(spot.detourS) + ' 더 걸림'}</div>
-      <div class="muted" style="margin-top:6px">${joined.length ? joined.join(', ') + ' 경유지에 넣음' : '차량에서 ‘여기서 모이기’를 누르면 크루 모두에게 알려요'}</div>`;
+      <div class="who">${who}</div>
+      <div class="sub">${spot.detourS < 120 ? '가는 길에 있고, ' : dur(spot.detourS) + ' 돌아가고, '}${wait < 120 ? '거의 같이 도착해요' : '먼저 온 차가 최대 ' + dur(wait) + ' 기다려요'}</div>
+      <div class="sub" style="margin-top:6px">${joined.length ? joined.join(', ') + '의 경유지에 들어갔어요' : '차에서 [여기서 모이기]를 누르면 크루 모두에게 알려요'}</div></div>`;
     const next = $('nextSpot');
     if (next) next.onclick = () => { const s = meet.spots; spotId = s[(s.indexOf(spot) + 1) % s.length].id; render(); };
   }
@@ -518,7 +545,7 @@
       $('results').innerHTML = items.length ? '' : '<p class="muted">결과가 없어요</p>';
       items.forEach((p) => {
         const d = document.createElement('div'); d.className = 'result';
-        d.innerHTML = `<b>${esc(p.name)}</b><span class="muted">${esc(p.address)}${near ? ' · ' + km(dist(near, p)) : ''}</span>`;
+        d.innerHTML = `<b>${esc(p.name)}</b><span class="muted">${esc(p.address)}${near ? ', ' + km(dist(near, p)) : ''}</span>`;
         d.onclick = () => { chosen = p; [...$('results').children].forEach((x) => x.classList.remove('sel')); d.classList.add('sel'); autoFit = true; render(); };
         $('results').appendChild(d);
       });
