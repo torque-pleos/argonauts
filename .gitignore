@@ -22,3 +22,6 @@ secrets.properties
 
 # Playwright MCP 기록
 .playwright-mcp/
+
+# 공모전 제출 APK는 커밋한다
+!apk/*.apk
