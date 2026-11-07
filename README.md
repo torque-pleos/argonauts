@@ -276,7 +276,7 @@ adb shell am start -n com.zigae.argonauts/.MainActivity
 | 항목 | 현재 | 비고 |
 | --- | --- | --- |
 | 크루 동기화 | **Supabase** 프로젝트 `argonauts` (`qhjlapaudkpxboonbwts`, 서울), 조직 `tennis` 계정 | 스키마: `supabase/migrations`. 변경 시 `supabase db push`. 앱·웹에는 publishable 키(클라이언트 공개용)만 넣는다. DB 비밀번호·secret 키는 커밋하지 않는다 |
-| 친구용 웹 배포 | Vercel 팀 **zi-gae**, 프로젝트 `argonauts-crew` → https://argonauts-crew.vercel.app | 재배포: `cd web && vercel deploy --prod --yes --scope zi-gae`. 도메인 바꾸면 `app/build.gradle.kts`의 `WEB_URL`도 수정 |
+| 친구용 웹 배포 | Vercel 프로젝트 `argonauts-crew` → https://argonauts-crew.vercel.app | 재배포: `cd web && vercel deploy --prod --yes`. 도메인 바꾸면 `app/build.gradle.kts`의 `WEB_URL`도 수정 |
 | 지도 타일 | OpenStreetMap 표준 타일 (키 없음) | 공모전 범위에선 유지. 상용 시 유료 타일 |
 | 장소 검색 / 경로·소요 시간 | Photon(komoot) · OSRM 공개 서버(경로, 소요 시간 행렬) (키 없음) | 공모전 범위에선 유지. 상용 시 카카오·네이버 로컬 검색 등 |
 | 휴게소 목록 | OpenStreetMap `highway=services` 중 이름에 "휴게소"가 있는 599곳 → `app/src/main/assets/rest_areas.json` (Overpass, 2026-11-02 추출) | 실행 중에는 Overpass를 부르지 않는다(응답 30초 이상·실패가 잦음). 상용 시 한국도로공사 휴게소 공공데이터 |
