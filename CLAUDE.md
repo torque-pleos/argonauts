@@ -18,6 +18,7 @@ adb -s emulator-5558 logcat -s Argo/Engine Argo/Navi Argo/Sync Argo/Demo Argo/Ge
   ~/Library/Android/sdk/emulator/emulator -avd Pleos_Connect_Argonauts -port 5558 -no-snapshot -no-boot-anim -no-metrics -no-audio
   ```
 - 구성: AGP 8.13.2 · Gradle 8.14.3 · Kotlin 2.2.21 · Compose · compileSdk 36 / targetSdk 34 / minSdk 28. SDK: Vehicle 2.3.2, NaviHelper 3.0.5. 그 외 OkHttp(Supabase REST·Realtime), osmdroid, ZXing.
+- 제출 APK: `./gradlew :app:assembleRelease`(디버그 키 서명) → `apk/양승희_Argonauts_release.apk`로 복사해 커밋(파일명은 공모전 규정 형식). release에서는 adb 시연 extra·`DEMO` 브로드캐스트가 꺼진다.
 - 앱·웹에 넣는 건 Supabase **publishable** 키뿐(공개용). DB 비밀번호·secret 키는 커밋 금지. `web/.vercel`, `web/.env.local`은 커밋 금지(.gitignore).
 
 ### 시연 준비 (에뮬레이터는 adb로 한글 입력 불가 → 디버그 빌드 전용 extra)

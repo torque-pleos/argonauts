@@ -1,5 +1,40 @@
 # Argonauts — 함께 달리는 크루 위치 공유
 
+## 제출 안내
+
+### ① 앱 이름 · 한 줄 소개
+**Argonauts** — 여러 대의 차가 한 크루로 움직일 때, 크루원 전원의 위치·목적지·도착 예정 시간을 차 화면 한 곳에서 보고, 크루 목적지와 모이기 좋은 휴게소를 탭 한 번으로 내 내비 경로에 넣는 Pleos Connect 앱. Pleos 차가 없는 친구는 휴대폰 웹으로 같은 크루에 참여한다.
+
+시연 영상(약 2분 30초): [docs/demo/argonauts_demo.mp4](docs/demo/argonauts_demo.mp4)
+
+### ② 실행 방법
+```bash
+adb install -r -g apk/양승희_Argonauts_release.apk
+adb shell am start -n com.zigae.argonauts/.MainActivity
+```
+- 에뮬레이터가 여러 대면 `adb -s <시리얼>`을 붙인다. 설치 후 앱 목록(GNB)의 Argonauts 아이콘으로도 열 수 있다.
+- release APK는 별도 키스토어 없이 디버그 키로 서명했다(공모전 설치용).
+- 소스에서 빌드: JDK 17, `./gradlew :app:assembleRelease` → `app/build/outputs/apk/release/app-release.apk`. 단위 테스트는 `./gradlew :app:testDebugUnitTest`.
+
+### ③ 테스트 환경 · 필요한 설정
+| 항목 | 내용 |
+| --- | --- |
+| 실행 환경 | Pleos Connect 에뮬레이터(Android Automotive, 확인 이미지 v2.1.0). 인터넷 연결 필요(크루 동기화 Supabase, 지도 OSM, 경로 OSRM, 장소 검색 Photon). 별도 계정·키 설정 없음 |
+| 에뮬레이터 실행 | 오디오를 켜면 부팅 직후 멈추는 경우가 있어 `-no-audio`로 실행 |
+| 크루 만들기 | 내비에서 목적지(예: 남이섬)를 먼저 정하고 앱 홈에서 이름 입력 → [크루 만들기]. 내비 목적지가 크루 목적지가 된다(없으면 크루 화면의 [목적지 정하기]) |
+| 시연 모드 | 에뮬레이터는 현재 위치가 고정이라, 설정(톱니바퀴) → **시연 모드**를 켜면 가상 크루원 2명(민수·지영)이 함께 달리고 기어 D에서 내 차도 경로를 따라 움직인다 |
+| 시연 스크립트 | 크루 안에서 설정 → 시연 스크립트: ① 지영이 휴게소를 경유지로 추가 ② 민수가 목적지 변경 요청 ③ 전원 도착(원정 완료 카드) |
+| 휴대폰 웹으로 참여 | 크루 화면의 공유 아이콘 → 초대 QR을 휴대폰으로 찍거나 https://argonauts-crew.vercel.app 에서 6자리 크루 코드와 이름 입력. 위치는 휴대폰 브라우저 위치를 쓰며, 목적지 변경 요청도 보낼 수 있다 |
+| 화면 분할 | GNB의 Argonauts 아이콘으로 앱을 띄운 뒤 창 오른쪽 손잡이(⋮)를 왼쪽으로 끌면 내비와 1:1로 나뉜다(절반 폭 레이아웃). 앱을 내비 뒤로 보내면 새 소식이 내비 위 팝업 알림으로 뜬다 |
+| 주행 화면 | 에뮬레이터는 adb로 설치한 앱을 주행 중 차단하므로 설정 → **주행 화면 미리보기**로 간결 모드를 확인한다 |
+| 야간 테마 | `adb shell cmd uimode night yes` |
+| release 빌드 제한 | 개발용 adb 시연 명령(이름·목적지를 extra로 넣는 `am start --es name …`, `DEMO` 브로드캐스트)은 디버그 빌드에서만 동작한다. release에서는 위 설정 화면의 시연 모드·시연 스크립트를 쓴다 |
+
+### ④ APK 위치
+[`apk/양승희_Argonauts_release.apk`](apk/양승희_Argonauts_release.apk)
+
+---
+
 > **이름의 유래**: 아르고나우타이(Argonauts) — 아르고호를 타고 함께 원정을 떠난 영웅들. 여러 대의 차가 **한 크루로 같은 목적지를 향해 함께 이동**한다는 의미.
 
 | 항목 | 내용 |
@@ -248,6 +283,5 @@
 
 ## 참고 문서
 
-- [Connect SDK 레퍼런스](../docs/pleos/02-connect-sdk.md) · [메서드 인덱스](../docs/pleos/02a-sdk-method-index.md)
-- [앱 카테고리·주행 규제·단일 경로 정책](../docs/pleos/03-app-design-dev-guide.md) · [심사 체크리스트](../docs/pleos/04-test-and-publish.md)
-- [Playground SDK 실제 상태](../docs/pleos/README.md)
+- Pleos 공식 문서: https://document.pleos.ai (Connect SDK, 앱 카테고리·주행 규제·단일 경로 정책, 테스트·배포)
+- Pleos Playground: https://developers.pleos.ai/playground
