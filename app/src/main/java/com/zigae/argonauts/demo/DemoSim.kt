@@ -112,10 +112,12 @@ class DemoSim(private val scope: CoroutineScope) {
     private val lock = Mutex()
     private var job: Job? = null
 
-    private val friends = listOf(
+    private fun newFriends() = listOf(
         Friend("sim-minsu", "민수", 1, LatLon(37.3948, 127.1112), pace = 0.97), // 판교역 인근
         Friend("sim-jiyoung", "지영", 2, LatLon(37.5133, 127.1001), pace = 1.04), // 잠실 (다른 곳에서 출발 → 중간에 모이기)
     )
+    // 새 크루마다 출발지에서 다시 시작한다 (지난 시연의 도착 상태가 남지 않게)
+    private var friends = newFriends()
     private var self: SimCar? = null
     private var selfKey: String? = null
     private var crewDest: Place? = null
@@ -139,6 +141,8 @@ class DemoSim(private val scope: CoroutineScope) {
     ) {
         stop()
         job = scope.launch {
+            // 이전 루프가 끝난 뒤(lock 안에서) 초기화 → 시연 스크립트와 동시에 바뀌지 않는다
+            lock.withLock { friends = newFriends(); crewDest = null }
             while (isActive) {
                 lock.withLock {
                     syncFriends(crewDestination())
