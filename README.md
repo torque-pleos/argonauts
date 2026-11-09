@@ -9,7 +9,7 @@
 
 ### ② 실행 방법
 ```bash
-adb install -r -g apk/양승희_Argonauts_release.apk
+adb install -r -g apk/김지원_Argonauts_release.apk
 adb shell am start -n com.zigae.argonauts/.MainActivity
 ```
 - 에뮬레이터가 여러 대면 `adb -s <시리얼>`을 붙인다. 설치 후 앱 목록(GNB)의 Argonauts 아이콘으로도 열 수 있다.
@@ -31,7 +31,7 @@ adb shell am start -n com.zigae.argonauts/.MainActivity
 | release 빌드 제한 | 개발용 adb 시연 명령(이름·목적지를 extra로 넣는 `am start --es name …`, `DEMO` 브로드캐스트)은 디버그 빌드에서만 동작한다. release에서는 위 설정 화면의 시연 모드·시연 스크립트를 쓴다 |
 
 ### ④ APK 위치
-[`apk/양승희_Argonauts_release.apk`](apk/양승희_Argonauts_release.apk)
+[`apk/김지원_Argonauts_release.apk`](apk/김지원_Argonauts_release.apk)
 
 ---
 
